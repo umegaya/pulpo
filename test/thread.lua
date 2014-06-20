@@ -13,7 +13,8 @@ local args = memory.alloc_typed('int', 3)
 args[0] = 1
 args[1] = 2
 args[2] = 3
-local t = thread.create(function (targs, shmp)
+local t = thread.create(function (targs)
+	local i = 0
 	-- because actually different lua_State execute the code inside this function, 
 	-- ffi setup required again.
 	local ffi = require 'ffi'
@@ -22,7 +23,7 @@ local t = thread.create(function (targs, shmp)
 	void free(void *p);
 	]]
 	local a = ffi.cast('int*', targs)
-	print('hello from new thread:' .. (a[0] + a[1] + a[2]))
+	print('hello from pulpo:', (a[0] + a[1] + a[2]))
 	assert((a[0] + a[1] + a[2]) == 6, "correctly passed values into new thread")
 	ffi.C.free(targs)
 	local r = ffi.cast('int*', ffi.C.malloc(ffi.sizeof('int[1]')))
@@ -38,24 +39,29 @@ assert(r[0] == 111)
 
 print('----- test2 -----')
 local threads = {}
+local params = {}
 for i=0,util.n_cpu() - 1,1 do
 	local a = memory.alloc_typed('int', 1)
-	a[0] = (i + 1) * 111
-	local t = thread.create(function (targs, shmp)
+	a[0] = i
+	thread.share_memory('thread_shm'..i, function ()
+		local ptr = memory.alloc_typed('int', 1)
+		ptr[0] = a[0]
+		return memory.strdup('int *'), ptr
+	end)
+	local t = thread.create(function (targs)
 		local ffi = require 'ffi'
-		ffi.cdef "unsigned int sleep(unsigned int seconds);"
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
-		local p = memory.alloc_typed('int', 1)
-		p[0] = (ffi.cast('int*', targs))[0]
-		print('thread:', thread.me(), p[0])
-		shmp[0] = p -- set this pointer as shared memory
-		while p[0] > 0 do
+		local idx = (ffi.cast('int*', targs))[0]
+		print('thread:', thread.me(), idx)
+		local ptr = thread.share_memory('thread_shm'..idx)
+		ptr[0] = (idx + 1) * 111
+		while ptr[0] > 0 do
 			thread.sleep(0.1)
 		end
-		memory.free(p)
 	end, a)
 	table.insert(threads, t)
+	params[i] = a
 end
 local finished = {}
 while true do 
@@ -65,8 +71,8 @@ while true do
 		for i=0,size-1,1 do
 			if not finished[i] then
 				assert(thread.equal(threads[i+1], thread_list[i]), "thread handle will be same")
-				local pi = thread.shm(thread_list[i], 'int')
-				if not pi then
+				local pi = thread.share_memory('thread_shm'..i)
+				if pi[0] == i then
 					success = false
 					break
 				else

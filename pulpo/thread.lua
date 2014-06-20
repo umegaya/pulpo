@@ -4,6 +4,7 @@ local memory = require 'pulpo.memory'
 local loader = require 'pulpo.loader'
 local errno = require 'pulpo.errno'
 local util = require 'pulpo.util'
+local gen = require 'pulpo.generics'
 local fs = require 'pulpo.fs'
 
 local _M = {}
@@ -16,7 +17,6 @@ ffi.cdef [[
 		void *manager;
 		void *cache;
 		void *original;
-		void **shm;
 	} pulpo_thread_args_dummy_t;
 ]]
 
@@ -25,9 +25,12 @@ function _M.init_cdef(cache)
 
 	loader.load("pthread.lua", {
 		--> from pthread
-		"pthread_t", "pthread_mutex_t", 
+		"pthread_t", "pthread_mutex_t", "pthread_rwlock_t", 
 		"pthread_mutex_lock", "pthread_mutex_unlock", 
 		"pthread_mutex_init", "pthread_mutex_destroy",
+		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
+		"pthread_rwlock_unlock", 
+		"pthread_rwlock_init", "pthread_rwlock_destroy", 
 		"pthread_create", "pthread_join", "pthread_self",
 		"pthread_equal", 
 	}, {}, "pthread", [[
@@ -49,24 +52,32 @@ function _M.init_cdef(cache)
 
 	ffi.cdef [[
 		typedef void *(*pulpo_thread_proc_t)(void *);
-		typedef struct {
+		typedef struct pulpo_thread_handle {
 			pthread_t pt;
 			lua_State *L;
-			void *shm[1];
+			void *opaque;
 		} pulpo_thread_handle_t;
-		typedef struct {
+		typedef struct pulpo_memblock {
+			const char *name;
+			const char *type;
+			void *ptr;
+		} pulpo_memblock_t;
+	]]
+	local shared_memory = gen.rwlock_ptr(gen.erastic_list('pulpo_memblock_t'))
+	ffi.cdef (([[
+		typedef struct pulpo_thread_manager {
 			pulpo_thread_handle_t **list;
 			int size, used;
+			%s shared_memory;
 			pthread_mutex_t mtx[1];
 			pthread_mutex_t load_mtx[1];
 		} pulpo_thread_manager_t;
-		typedef struct {
+		typedef struct pulpo_thread_args {
 			pulpo_thread_manager_t *manager;
-			pulpo_parsed_info_t *parsed;
+			pulpo_parsed_info_t *cache;
 			void *original;
-			void **shm;
 		} pulpo_thread_args_t;
-	]]
+	]]):format(shared_memory))
 
 	_M.defs = {
 		LUA_GLOBALSINDEX = ffi_state.defs.LUA_GLOBALSINDEX
@@ -78,7 +89,8 @@ function _M.init_cdef(cache)
 			init = function (t)
 				t.size, t.used = tonumber(util.n_cpu()), 0
 				t.list = assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
-					"fail to allocation thread list")
+					"fail to allocate thread list")
+				t.shared_memory:init(function (data) data:init(16) end)
 				PT.pthread_mutex_init(t.mtx, nil)
 				PT.pthread_mutex_init(t.load_mtx, nil)
 			end,
@@ -86,14 +98,13 @@ function _M.init_cdef(cache)
 				if t.list then
 					for i=0,t.used-1,1 do
 						local th = t.list[i]
-						PT.pthread_join(th.pt, rv)
-						C.lua_close(th.L)
-						memory.free(th)
+						_M.destroy(th, true)
 					end
 					memory.free(t.list)
 				end
 				PT.pthread_mutex_destroy(t.mtx)
 				PT.pthread_mutex_destroy(t.load_mtx)
+				t.shared_memory:fin(function (data) data:fin() end)
 			end,
 			insert = function (t, thread)
 				PT.pthread_mutex_lock(t.mtx)
@@ -151,6 +162,33 @@ function _M.init_cdef(cache)
 				end
 				return p
 			end,
+			share_memory = function (t, _name, _init)
+				return t.shared_memory:write(function (data, name, init)
+					data:reserve(1) -- at least 1 entry room
+					local e
+					for i=0,data.used-1,1 do
+						e = data.list[i]
+						if ffi.string(e.name) == name then
+							-- print('returns', name, e.type, e.ptr)
+							return ffi.cast(ffi.string(e.type), e.ptr)
+						end
+					end
+					if not init then
+						error("no attempt to initialize but not found:"..name)
+					end
+					e = data.list[data.used]
+					e.name = memory.strdup(name)
+					if type(init) == "string" then
+						e.type, e.ptr = init, memory.alloc_fill_typed(init)
+					elseif type(init) == "function" then
+						e.type, e.ptr = init()
+					else
+						assert(false, "no initializer:"..type(init))
+					end
+					data.used = (data.used + 1)
+					return ffi.cast(ffi.string(e.type), e.ptr)
+				end, _name, _init)
+			end,
 		}
 	})
 end
@@ -178,9 +216,16 @@ function _M.apply_options(opts)
 end
 
 function _M.init_worker(manager, cache)
-	assert(manager and cache)
+	assert(manager)
 	_M.init_cdef(ffi.cast("pulpo_parsed_info_t*", cache))
 	threads = ffi.cast("pulpo_thread_manager_t*", manager)
+	-- wait for this thread appears in global thread list
+	local cnt = 10
+	while not threads:find(C.pthread_self()) and (cnt > 0) do
+		thread.sleep(0.1)
+		cnt = cnt - 1
+	end
+	assert(cnt > 0, "thread initialization timeout")
 end
 
 function _M.load(name, cdecls, macros, lib, from)
@@ -200,7 +245,7 @@ function _M.fin()
 end
 
 -- create thread. args must be cast-able as void *.
-function _M.create(proc, args)
+function _M.create(proc, args, opaque)
 	local L = C.luaL_newstate()
 	assert(L ~= nil)
 	C.luaL_openlibs(L)
@@ -211,7 +256,7 @@ function _M.create(proc, args)
 	local mainloop = function (p)
 		local args = ffi.cast("pulpo_thread_args_dummy_t*", p)
 		thread.init_worker(args.manager, args.cache)
-		return main(args.original, args.shm)
+		return main(args.original)
 	end
 	__mainloop__ = tonumber(ffi.cast("intptr_t", ffi.cast("void *(*)(void *)", mainloop)))
 	]]):format(string.dump(proc)))
@@ -227,22 +272,24 @@ function _M.create(proc, args)
 	local mainloop = C.lua_tointeger(L, -1)
 	C.lua_settop(L, -2)
 
-	local th = memory.alloc_typed("pulpo_thread_handle_t", 1)
-	th.shm[0] = nil
+	local th = memory.alloc_typed("pulpo_thread_handle_t")
 	local t = ffi.new("pthread_t[1]")
-	local argp = ffi.new("pulpo_thread_args_t", {threads, loader.get_cache_ptr(), args, th.shm})
+	local argp = ffi.new("pulpo_thread_args_t", {threads, loader.get_cache_ptr(), args})
+	th.L = L
+	th.opaque = opaque
 	assert(PT.pthread_create(t, nil, ffi.cast("pulpo_thread_proc_t", mainloop), argp) == 0)
 	th.pt = t[0]
-	th.L = L
 	return threads:insert(th) and th or nil
 end
 
 -- destroy thread.
-function _M.destroy(thread)
+function _M.destroy(thread, on_finalize)
 	local rv = ffi.new("void*[1]")
 	PT.pthread_join(thread.pt, rv)
 	C.lua_close(thread.L)
-	threads:remove(thread)
+	if not on_finalize then
+		threads:remove(thread)
+	end
 	memory.free(thread)
 	return rv[0]
 end
@@ -259,13 +306,19 @@ function _M.equal(t1, t2)
 	return PT.pthread_equal(t1.pt, t2.pt) ~= 0
 end
 
--- get shared memory of specified thread
--- thread routine is function f(args, ptr_to_shm:void *[1]), 
--- if thread routine set value to ptr_to_shm[0], then it can be access from all thread.
--- note that value which stores to ptr_to_shm need to be alloced, no gc
-function _M.shm(thread, ct)
-	local p = thread.shm[0]
-	return (ct and p ~= ffi.NULL) and ffi.cast(ct .. "*", p) or nil
+-- set pointer related with specified thread
+function _M.set_opaque(thread, p)
+	assert(_M.equal(_M.me(), thread), "different thread should not change opaque ptr")
+	thread.opaque = p
+end
+function _M.opaque(thread, ct)
+	local p = thread.opaque
+	return (ct and p ~= ffi.NULL) and ffi.cast(ct, p) or nil
+end
+
+-- global share memory
+function _M.share_memory(k, v)
+	return threads:share_memory(k, v)
 end
 
 -- iterate all current thread

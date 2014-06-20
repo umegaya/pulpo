@@ -100,7 +100,7 @@ function _M.setsockbuf(rb, wb)
 	*			sysctl -w net.inet.tcp.sendspace=4000000 sysctl -w net.inet.tcp.recvspace=4000000 
 	*	linux:	/proc/sys/net/core/rmem_max       - maximum receive window
     *			/proc/sys/net/core/wmem_max       - maximum send window
-    *			(but for linux, below page will not recommend manual tuning because default it set to 4MB)
+    *			(but for linux, below page does not recommend manual tuning because default it set to 4MB)
 	*	see http://www.psc.edu/index.php/networking/641-tcp-tune for detail
 	*/]]
 	return rb, wb
@@ -131,5 +131,38 @@ function _M.sleep(sec)
 		rem = tmp
 	end
 end
+
+--> transfer executable information through string
+function _M.decode_proc(code)
+	local executable
+	local ok, r = pcall(load, code)
+	if ok and r then
+		executable = r
+	elseif code:find('^%.') or code:find('%/') then
+		ok, r = pcall(loadfile, code)
+		if ok and r then
+			executable = r
+		end
+	else
+		local mod = executable
+		executable = function ()
+			local ok, r = pcall(require, mod)
+			if not ok then error(r) end
+		end
+	end
+	return executable
+end
+function _M.encode_proc(proc)
+	if type(executable) == "string" then
+		return proc
+	elseif type(executable) ~= "function" then
+		error('invalid executable:'..type(executable))
+	end
+	return string.dump(proc)
+end
+function _M.proc_mem_name(group)
+	return ("__%s_proc__"):format(group)
+end
+
 
 return _M

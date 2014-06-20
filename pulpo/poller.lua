@@ -15,6 +15,12 @@ local read_handlers, write_handlers, gc_handlers, error_handlers = {}, {}, {}, {
 local HANDLER_TYPE_POLLER
 local io_index, poller_index = {}, {}
 
+ffi.cdef[[
+	typedef struct pulpo_poller_config {
+		int maxfd, maxconn, rmax, wmax;
+	} pulpo_poller_config_t;
+]]
+
 ---------------------------------------------------
 -- system independent poller object's API
 ---------------------------------------------------
@@ -78,10 +84,16 @@ function _M.add_handler(reader, writer, gc, err)
 end
 
 function _M.initialize(opts)
-	--> change system limits	
-	_M.maxfd = util.maxfd(opts.maxfd or 1024)
-	_M.maxconn = util.maxconn(opts.maxconn or 512)
-	_M.rmax, _M.wmax = util.setsockbuf(opts.rmax, opts.wmax)
+	--> change system limits
+	_M.config = thread.share_memory('poller', function ()
+		local data = memory.alloc_typed('pulpo_poller_config_t')
+		data.maxfd = util.maxfd(opts.maxfd or 1024)
+		data.maxconn = util.maxconn(opts.maxconn or 512)
+		if opts.rmax or opts.wmax then
+			data.rmax, data.wmax = util.setsockbuf(opts.rmax, opts.wmax)
+		end
+		return 'pulpo_poller_config_t*', data
+	end)
 
 	--> tweak signal handler
 	signal.ignore("SIGPIPE")
@@ -97,11 +109,15 @@ function _M.initialize(opts)
 	iolist = require ("pulpo.poller."..poller).initialize({
 		opts = opts,
 		handlers = handlers, gc_handlers = gc_handlers, 
-		poller = _M, 
+		poller = _M.config, 
 		poller_index = poller_index, 
 		io_index = io_index,
 	})
 	return true
+end
+
+function _M.init_worker()
+	_M.initialize({})
 end
 
 function _M.finalize()
@@ -117,7 +133,7 @@ end
 _M.pollerlist = {}
 function _M.new()
 	local p = memory.alloc_typed('pulpo_poller_t')
-	p:init(_M.maxfd)
+	p:init(_M.config.maxfd)
 	table.insert(_M.pollerlist, p)
 	return p
 end

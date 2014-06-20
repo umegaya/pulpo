@@ -166,7 +166,7 @@ function _M.listen(addr, opts)
 		C.close(fd)
 		error('fail to listen:bind:'..errno.errno())
 	end
-	if C.listen(fd, poller.maxconn) < 0 then
+	if C.listen(fd, poller.config.maxconn) < 0 then
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end

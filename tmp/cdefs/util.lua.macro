@@ -1,2 +1,0 @@
-#define RLIMIT_NOFILE (8)
-#define RLIMIT_CORE (4)
