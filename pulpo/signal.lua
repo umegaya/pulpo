@@ -8,12 +8,14 @@ local _M = {}
 local ffi_state
 
 local SIG_IGN
+local SA_RESTART, SA_SIGINFO
 
 loader.add_lazy_initializer(function ()
 	ffi_state = loader.load("signal.lua", {
-		"signal", "sigaction", "sigemptyset", "sig_t", 
+		"signal", "sigaction", "func sigaction", "sigemptyset", "sig_t", 
 	}, {
 		"SIGHUP", "SIGPIPE", "SIGKILL", "SIGALRM", "SIGSEGV", 
+		"SA_RESTART", "SA_SIGINFO", 
 		regex = {
 			"^SIG%w+"
 		}
@@ -23,6 +25,8 @@ loader.add_lazy_initializer(function ()
 
 	--> that is really disappointing, but macro SIG_IGN is now cannot processed correctly. 
 	SIG_IGN = ffi.cast("sig_t", 1)
+	SA_RESTART = ffi.defs.SA_RESTART
+	SA_SIGINFO = ffi.defs.SA_SIGINFO
 end)
 
 function _M.ignore(signo)
@@ -32,15 +36,15 @@ end
 
 function _M.signal(signo, handler)
 	signo = (type(signo) == 'number' and signo or _M[signo])
-	local sa = memory.managed_alloc_typed('struct sigaction[1]')
-	local sset = memory.managed_alloc_typed('sigset_t[1]')
-	sa[0].sa_handler = handler
-	sa[0].sa_flags = SA_RESTART
+	local sa = memory.managed_alloc_typed('struct sigaction')
+	local sset = memory.managed_alloc_typed('sigset_t')
+	sa[0].__sigaction_u.__sa_sigaction = handler
+	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART)
 	if C.sigemptyset(sset) ~= 0 then
 		return false
 	end
 	sa[0].sa_mask = sset[0]
-	if C.sigaction(signo, sa, 0) ~= 0 then
+	if C.sigaction(signo, sa, ffi.NULL) ~= 0 then
 		return false
 	end
 	return true

@@ -16,6 +16,15 @@ ffi.cdef [[
 	} pulpo_parsed_info_t;
 ]]
 
+local function lock_cache()
+	if not _mutex then return end
+	C.pthread_mutex_lock(_mutex)
+end
+local function unlock_cache()
+	if not _mutex then return end
+	C.pthread_mutex_unlock(_mutex)
+end
+
 ffi.metatype('pulpo_parsed_info_t', {
 	__index = {
 		init = function (t, path)
@@ -54,6 +63,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			if t.size <= t.used then
 				local p = memory.realloc_typed("pulpo_parsed_cache_t", t.list, t.size * 2)
 				if p then
+					print('realloc:', t.list, "=>", p)
 					t.list = p
 					t.size = (t.size * 2)
 				else
@@ -91,6 +101,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			local root = ffi.string(t.path)
 			local e = t:reserve_entry()
 			e.name = memory.strdup(name)
+			print('load', name, e)
 			for _,kind in ipairs({"cdecl", "macro"}) do
 				local path = root .. "/" .. name .. "." .. kind
 				local f = io.open(path, "r")
@@ -103,6 +114,13 @@ ffi.metatype('pulpo_parsed_info_t', {
 		end,
 	}
 })
+
+local function lazy_initialize()
+	--> initialize lazy init modules
+	for _,init in ipairs(_M.lazy_initializers) do
+		init()
+	end
+end
 
 function _M.initialize(cache, loader_ffi_state)
 	if loader_ffi_state then
@@ -121,10 +139,8 @@ function _M.initialize(cache, loader_ffi_state)
 		_cache = assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
 		_cache:init(_M.cache_dir)
 	end
-	--> initialize lazy init module
-	for _,init in ipairs(_M.lazy_initializers) do
-		init()
-	end
+
+	lazy_initialize()
 end
 
 _M.lazy_initializers = {}
@@ -135,6 +151,14 @@ end
 function _M.set_cache_dir(path)
 	-- print('set cache dir:'..path)
 	_M.cache_dir = path
+end
+
+function _M.init_mutex(shm)
+	_mutex = shm:find_or_init('cache_lock', function ()
+		local p = memory.alloc_typed('pthread_mutex_t')
+		C.pthread_mutex_init(p, nil)
+		return 'pthread_mutex_t', p
+	end)
 end
 
 function _M.get_cache_ptr()
@@ -198,23 +222,32 @@ local function merge_regex(tree, macros)
 end
 
 function _M.unsafe_load(name, cdecls, macros, lib, from)
+	local i = 0
 	local c = _cache:find(name)
-	tmp_cdecls = merge_nice_to_have(cdecls)
-	tmp_macros = merge_nice_to_have(macros)
+	local tmp_cdecls = merge_nice_to_have(cdecls)
+	local tmp_macros = merge_nice_to_have(macros)
+	-- print(ffi, 'unsafe_load', i); i = i + 1
 	if not c then
+		-- print('init:'..name)
 		_M.ffi_state:parse(from)
-		local _cdecl = parser.inject(_M.ffi_state.tree, tmp_cdecls, ffi.imported_csymbols)
-		--> initialize macro definition
+		local _cdecl = parser.inject(_M.ffi_state.tree, tmp_cdecls)
+		--> initialize macro definition (this thread already contains macro definition by state:parse)
 		tmp_macros = merge_regex(_M.ffi_state.tree, tmp_macros)
 		local _macro = inject_macros(_M.ffi_state, tmp_macros)
 		--> initialize parsed information
 		c = assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
 	else
-		--- print('macro:'..ffi.string(c.macro))
+		-- print('macro:[['..ffi.string(c.macro)..']]')
+	-- print(ffi, 'unsafe_load found', i, "[["..ffi.string(c.macro):sub(1, 16).."]]"); i = i + 1
 		_M.ffi_state:cdef(ffi.string(c.macro))
+		-- parse and inject cdecl to prevent double definition
+	-- print(ffi, 'unsafe_load found', i, "[["..ffi.string(c.cdecl):sub(1, 16).."]]"); i = i + 1
+		_M.ffi_state:parse(ffi.string(c.cdecl))
+	-- print(ffi, 'unsafe_load found', i); i = i + 1
 	end
-	-- print('cdecl:'..ffi.string(c.cdecl))
-	ffi.lcpp_cdef_backup(ffi.string(c.cdecl))
+	-- print('===============================================')
+	-- print(name, 'cdecl', ffi, ffi.string(c.cdecl)) 
+	ffi.native_cdef_with_guard(_M.ffi_state.tree, tmp_cdecls)
 	local clib
 	if lib then
 		clib = assert(ffi.load(lib), "fail to load:" .. lib)
@@ -267,7 +300,9 @@ so luact will remove cache dir.
 try restart to recreate cdef cache.]]
 function _M.load(name, cdecls, macros, lib, from)
 	local i = 0
+	lock_cache()
 	local ret = {pcall(_M.unsafe_load, name, cdecls, macros, lib, from)}
+	unlock_cache()
 	if not table.remove(ret, 1) then
 		local err = table.remove(ret, 1)
 		if _M.cache_dir then

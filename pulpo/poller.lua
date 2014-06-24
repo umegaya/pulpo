@@ -83,20 +83,17 @@ function _M.add_handler(reader, writer, gc, err)
 	return handler_id_seed
 end
 
-function _M.initialize(opts)
+local function common_initialize(opts)
 	--> change system limits
-	_M.config = thread.share_memory('poller', function ()
+	_M.config = thread.share_memory('__poller__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
 		data.maxfd = util.maxfd(opts.maxfd or 1024)
 		data.maxconn = util.maxconn(opts.maxconn or 512)
 		if opts.rmax or opts.wmax then
 			data.rmax, data.wmax = util.setsockbuf(opts.rmax, opts.wmax)
 		end
-		return 'pulpo_poller_config_t*', data
+		return 'pulpo_poller_config_t', data
 	end)
-
-	--> tweak signal handler
-	signal.ignore("SIGPIPE")
 
 	-- system dependent initialization (it should define pulpo_poller_t, pulpo_io_t)
 	local poller = opts.poller or (
@@ -116,8 +113,14 @@ function _M.initialize(opts)
 	return true
 end
 
+function _M.initialize(opts)
+	common_initialize(opts)
+	--> tweak signal handler
+	signal.ignore("SIGPIPE")
+end
+
 function _M.init_worker()
-	_M.initialize({})
+	common_initialize({})
 end
 
 function _M.finalize()

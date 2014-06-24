@@ -243,6 +243,7 @@ end
 local addrinfo_buffer = ffi.new('struct addrinfo * [1]')
 local hint_buffer = ffi.new('struct addrinfo[1]')
 function _M.inet_hostbyname(addr, addrp, socktype)
+	-- print(addr, addrp, socktype, debug.traceback())
 	local s,e,host,port = addr:find('([%w%.%_]+):([0-9]+)')
 	if not s then 
 		return -1
@@ -293,7 +294,7 @@ function _M.setsockopt(fd, opts)
 		end
 		-- fcntl declaration is int fcntl(int, int, ...), 
 		-- that means third argument type is vararg, which less converted than usual ffi function call 
-		-- (eg. lua-number to double to int), so you need to convert to int by you
+		-- (eg. lua-number to double to int), so you need to convert to int by yourself
 		if C.fcntl(fd, F_SETFL, ffi.new('int', bit.bor(f, O_NONBLOCK))) < 0 then
 			print(ERROR,SOCKOPT,("fcntl fail (set nonblock) errno=%d"):format(ffi.errno()));
 			return -1

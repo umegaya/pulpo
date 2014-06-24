@@ -20,7 +20,7 @@ ffi.cdef [[
 	void *malloc(size_t);
 	void free(void *);
 	void *realloc(void *, size_t);
-	char *strncpy(char *, const char *, size_t);
+	char *strdup(const char *);
 ]]
 
 function _M.alloc_fill(sz, fill)
@@ -52,11 +52,15 @@ function _M.alloc_typed(ct, sz)
 end
 
 function _M.strdup(str)
-	local p = _M.alloc_typed('char', #str + 1)
-	if p then
-		ffi.copy(p, str)
+	if type(str) == "string" then
+		local p = _M.alloc_typed('char', #str + 1)
+		if p then
+			ffi.copy(p, str)
+		end
+		return p
+	else
+		return C.strdup(str)
 	end
-	return p
 end
 
 function _M.realloc(p, sz)

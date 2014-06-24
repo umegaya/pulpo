@@ -11,77 +11,119 @@ _M.thread = thread
 _M.poller = poller
 _M.share_memory = thread.share_memory
 
-ffi.cdef[[
-	typedef pulpo_opaque {
-		unsigned short id, padd;
-		const char *group;
-		pulpo_poller_t *poller;
-	} pulpo_opaque_t;
-]]
-
-local idseed_t = gen.rwlock_ptr("int")
-
 -- only main thread call this.
 function _M.initialize(opts)
+	-- child thread may call pulpo.run, 
+	-- but already initialized by init_worker.
+	-- prevent re-initialize by this.
 	if not _M.initialized then
 		thread.initialize(opts)
 		poller.initialize(opts)
-		_M.share_memory("__thread_id_seed__", idseed_t)
+		_M.init_share_memory()
 		_M.mainloop = poller.new()
+		_M.init_cdef()
 		_M.initialized = true
 	end
 end
--- others initialized by this.
-function _M.init_worker(tls)
-	poller.init_worker()
-	_M.mainloop = poller.new()
-	_M.tls = tls
-	_M.tls.poller = _M.mainloop	
-	thread.set_opaque(thread.me(), tls)
+
+function _M.init_share_memory()
+	_M.share_memory("__thread_id_seed__", gen.rwlock_ptr("int"))
 end
 
-local function create_opaque(group)
+-- others initialized by this.
+function _M.init_worker(tls)
+	if not _M.initialized then
+		poller.init_worker()
+		_M.mainloop = poller.new()
+		_M.init_cdef()
+		_M.initialized = true
+	end
+
+	local opaque = thread.opaque(thread.me(), "pulpo_opaque_t*")
+	opaque.poller = _M.mainloop	
+	_M.tid = opaque.id
+	return opaque
+end
+
+function _M.init_cdef()
+	ffi.cdef[[
+		typedef struct pulpo_opaque {
+			unsigned short id, padd;
+			char *group;
+			char *proc;
+			size_t plen;
+			pulpo_poller_t *poller;
+		} pulpo_opaque_t;
+	]]
+	-- necessary gen cdef
+	gen.rwlock_ptr("int")
+end
+
+function create_opaque(fn, group)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	r.id = _M.share_memory("__thread_id_seed__"):write(function (data) 
 		data = data + 1
+		if data > 65000 then data = 1 end
 		return data
 	end)
 	r.group = memory.strdup(group)
+	local proc = util.encode_proc(fn)
+	r.proc = memory.strdup(proc)
+	r.plen = #proc
 	return r
+end
+
+function _M.create_thread(fn, group, arg)
+	return thread.create(function (arg)
+		local ffi = require 'ffiex'
+		local pulpo = require 'pulpo.init'
+		local util = require 'pulpo.util'
+		local memory = require 'pulpo.memory'
+		local opaque = pulpo.init_worker()
+		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
+		memory.free(opaque.proc)
+		proc(arg)
+	end, arg or ffi.NULL, create_opaque(fn, group or "main"))
 end
 
 function _M.run(opts, executable)
 	_M.initialize(opts)
 
-	local group = opts.group or "main"
-	local arg = opts.arg or ffi.NULL
-	local dump = _M.encode_proc(executable)
-	pulpo.share_memory(util.proc_mem_name(group), function ()
-		return "const char *", memory.strdup(dump)
-	end)
-
 	_M.n_core = opts.n_core or util.n_cpu()
-	for i=0,_M.n_core - 1,1 do
-		thread.create(function (arg)
-			local pulpo = require 'pulpo'
-			local opq = thread.opaque(thread.me(), "pulpo_opaque_t*")
-			pulpo.init_worker(opq)
-
-			local util = require 'pulpo.util'
-			local proc_mem_name = util.proc_mem_name(ffi.string(opq.group))
-			local code = ffi.string(pulpo.share_memory(proc_mem_name))
-			local proc = util.decode_proc(code)
-			coroutine.wrap(proc)(arg)
-			pulpo.mainloop:start()
-		end, arg, create_opaque(group))
+	-- -1 for this thread (also run as worker)
+	for i=0,_M.n_core - 2,1 do
+		thread.create(
+			function (arg)
+				local ffi = require 'ffiex'
+				local pulpo = require 'pulpo.init'
+				local util = require 'pulpo.util'
+				local memory = require 'pulpo.memory'
+				local opaque = pulpo.init_worker()
+				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
+				memory.free(opaque.proc)
+				print('start main coro', ffi)
+				coroutine.wrap(proc)(arg)
+				pulpo.mainloop:loop()
+			end, 
+			opts.arg or ffi.NULL, 
+			create_opaque(executable, opts.group or "main"),
+			true
+		)
 	end
-	coroutine.wrap(fn)(arg)
-	pulpo.mainloop:start()
+	print('start main coro:main', ffi)
+	coroutine.wrap(util.create_proc(executable))(arg)
+	_M.mainloop:loop()
 end
 
 function _M.filter(group_or_id_or_filter)
 	return thread.fetch(function (list, size)
 		local matches = {}
+		if not group_or_id_or_filter then
+			for i=0,size,1 do
+				table.insert(matches, list[i])
+			end
+			return matches
+		end
 		for i=0,size,1 do
 			local th = list[i]
 			if type(group_or_id_or_filter) == "string" then -- group
