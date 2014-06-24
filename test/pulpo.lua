@@ -2,8 +2,10 @@ local ffi = require 'ffiex'
 local pulpo = require 'pulpo.init'
 local memory = require 'pulpo.memory'
 
-local NCLIENTS = 1000
+local NCLIENTS = 2000
 local NITER = 100
+local NCLIENTCORES = 2
+local NSERVERCORES = 4
 
 pulpo.initialize({
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
@@ -15,26 +17,46 @@ ffi.cdef [[
 	typedef struct test_config {
 		int n_iter;
 		int n_client;
+		int n_client_core;
+		int n_server_core;
+		bool finished;
 	} test_config_t;
 ]]
 
-pulpo.share_memory('config', function ()
+local cf = pulpo.share_memory('config', function ()
 	local config = memory.alloc_typed('test_config_t')
 	config.n_iter = NITER
 	config.n_client = NCLIENTS
+	config.n_client_core = NCLIENTCORES
+	config.n_server_core = NSERVERCORES
+	config.finished = false
 	return 'test_config_t', config
 end)
 
+-- server worker
 pulpo.create_thread(function (args)
 	local pulpo = require 'pulpo.init'
 	-- run server thread group with 2 core (including *this* thread)
 	pulpo.run({
 		group = "server",
-		n_core = 2,
+		n_core = pulpo.share_memory('config').n_server_core,
 	}, "./test/worker/server.lua")
 end)
 
-while true do
-	print('main thread fall asleep')
-	pulpo.thread.sleep(1)
+pulpo.thread.sleep(1.0)
+
+-- client worker
+pulpo.create_thread(function (args)
+	local pulpo = require 'pulpo.init'
+	-- run client thread group with 2 core (including *this* thread)
+	pulpo.run({
+		group = "client",
+		n_core = pulpo.share_memory('config').n_client_core,
+	}, "./test/worker/client.lua")
+end)
+
+
+while not cf.finished do
+	pulpo.thread.sleep(5)
+	print('finished=', cf.finished)
 end

@@ -101,16 +101,13 @@ function _M.run(opts, executable)
 				local opaque = pulpo.init_worker()
 				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 				memory.free(opaque.proc)
-				print('start main coro', ffi)
 				coroutine.wrap(proc)(arg)
 				pulpo.mainloop:loop()
 			end, 
 			opts.arg or ffi.NULL, 
-			create_opaque(executable, opts.group or "main"),
-			true
+			create_opaque(executable, opts.group or "main"), true
 		)
 	end
-	print('start main coro:main', ffi)
 	coroutine.wrap(util.create_proc(executable))(arg)
 	_M.mainloop:loop()
 end
@@ -119,12 +116,12 @@ function _M.filter(group_or_id_or_filter)
 	return thread.fetch(function (list, size)
 		local matches = {}
 		if not group_or_id_or_filter then
-			for i=0,size,1 do
+			for i=0,size-1,1 do
 				table.insert(matches, list[i])
 			end
 			return matches
 		end
-		for i=0,size,1 do
+		for i=0,size-1,1 do
 			local th = list[i]
 			if type(group_or_id_or_filter) == "string" then -- group
 				if ffi.string(opq.group) == group_or_id_or_filter then

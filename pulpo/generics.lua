@@ -24,7 +24,7 @@ local function cdef_generics(type, tag, tmpl, mt, name)
 	local typename, ct = tag:format(type)
 	if not created[typename] then
 		created[typename] = true
-		ffi.cdef(tmpl:format(typename, type, name or typename))
+		ffi.cdef(tmpl:format(name or typename, type, name or typename))
 		ct = ffi.metatype(typename, mt)
 	else
 		ct = ffi.typeof(typename)
@@ -45,6 +45,7 @@ function _M.erastic_list(type, name)
 		__index = {
 			init = function (t, size)
 				t.used = 0
+				assert(size > 0)
 				t.size = size
 				t.list = assert(memory.alloc_fill_typed(type, size), 
 					"fail to alloc "..type..":"..size)
@@ -57,13 +58,13 @@ function _M.erastic_list(type, name)
 			end,
 			reserve = function (t, rsize)
 				if t.used + rsize > t.size then
-					local newsize = (t.used * 2)
-					local p = memory.realloc_typed(type, newsize)
+					local newsize = (t.size * 2)
+					local p = memory.realloc_typed(type, p, newsize)
 					if p then
 						t.list = p
 						t.size = newsize
 					else
-						print('expand '..type..'fails:'..newsize)
+						print('expand '..type..' fails:'..newsize)
 					end
 				end
 				return p

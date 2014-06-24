@@ -28,7 +28,7 @@ end
 ffi.metatype('pulpo_parsed_info_t', {
 	__index = {
 		init = function (t, path)
-			t.size = 4
+			t.size = 16
 			t.used = 0
 			t.list = assert(memory.alloc_typed('pulpo_parsed_cache_t', t.size), 
 				"fail to allocate loader cache:"..t.size)
@@ -101,7 +101,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			local root = ffi.string(t.path)
 			local e = t:reserve_entry()
 			e.name = memory.strdup(name)
-			print('load', name, e)
+			-- print('load', name, e)
 			for _,kind in ipairs({"cdecl", "macro"}) do
 				local path = root .. "/" .. name .. "." .. kind
 				local f = io.open(path, "r")
@@ -238,12 +238,11 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 		c = assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
 	else
 		-- print('macro:[['..ffi.string(c.macro)..']]')
-	-- print(ffi, 'unsafe_load found', i, "[["..ffi.string(c.macro):sub(1, 16).."]]"); i = i + 1
 		_M.ffi_state:cdef(ffi.string(c.macro))
 		-- parse and inject cdecl to prevent double definition
-	-- print(ffi, 'unsafe_load found', i, "[["..ffi.string(c.cdecl):sub(1, 16).."]]"); i = i + 1
+		-- print("ptr", name, c, c.cdecl, _cache.used)
 		_M.ffi_state:parse(ffi.string(c.cdecl))
-	-- print(ffi, 'unsafe_load found', i); i = i + 1
+		-- print("end ptr", name, c, c.cdecl, _cache.used)
 	end
 	-- print('===============================================')
 	-- print(name, 'cdecl', ffi, ffi.string(c.cdecl)) 

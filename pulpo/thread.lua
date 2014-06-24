@@ -94,6 +94,7 @@ function _M.init_cdef(cache)
 		__index = {
 			init = function (t)
 				t.size, t.used = tonumber(util.n_cpu()), 0
+				assert(t.size > 0)
 				t.list = assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
 					"fail to allocate thread list")
 				PT.pthread_mutex_init(t.mtx, nil)
@@ -160,7 +161,7 @@ function _M.init_cdef(cache)
 			end,
 			expand = function (t, newsize)
 				-- only called from mutex locked bloc
-				local p = memory.realloc_typed("pulpo_thread_handle_t", newsize)
+				local p = memory.realloc_typed("pulpo_thread_handle_t", p, newsize)
 				if p then
 					t.list = p
 					t.size = newsize
@@ -200,12 +201,6 @@ function _M.initialize(opts)
 	threads = memory.alloc_typed("pulpo_thread_manager_t")
 	threads:init()
 	loader.init_mutex(ffi.cast("pulpo_shmem_t*", threads.shared_memory))
-	signal.signal("SIGSEGV", function (sno, info, p)
-		if not _M.dumped then
-			print(sno, info.si_addr, p, debug.traceback())
-			_M.dumped = true
-		end
-	end)
 	_M.main = true
 end
 
@@ -226,12 +221,6 @@ function _M.init_worker(args)
 		cnt = cnt - 1
 	end
 	assert(cnt > 0, "thread initialization timeout")
-	if set_sigsegv then
-		print(ffi, '====================================================== occur sigsegv')
-
---		local p = ffi.cast('int *', 0LL)
---		p[0] = 1
-	end
 end
 
 -- finalize. no need to call from worker
@@ -245,30 +234,32 @@ end
 
 -- create thread. args must be cast-able as void *.
 -- TODO : more graceful error handling (now only assert)
-function _M.create(proc, args, opaque, sigsegv)
+function _M.create(proc, args, opaque, debug)
 	local th = memory.alloc_typed("pulpo_thread_handle_t")
 	local L = C.luaL_newstate()
 	assert(L ~= nil)
 	C.luaL_openlibs(L)
 	local r = C.luaL_loadstring(L, ([[
-		local i = 0
+	_G.DEBUG = %s
 	local ffi = require 'ffiex'
 	local thread = require 'pulpo.thread'
+	local memory = require 'pulpo.memory'
 	local main = loadstring(%q, '%s')
 	local mainloop = function (p)
-		print(ffi, 'start mainloop', i); i = i + 1
-		print(ffi, 'mainloop', i); i = i + 1
 		local args = ffi.cast("pulpo_thread_args_dummy_t*", p)
-		print(ffi, 'mainloop', i); i = i + 1
+		local original = args.original
 		thread.init_worker(args)
-		print(ffi, 'mainloop', i); i = i + 1
-		local ok, r = pcall(main, args.original)
-		print(ffi, 'mainloop', i); i = i + 1
+		memory.free(args)
+		local ok, r = pcall(main, original)
 		if not ok then print('thread abort by error:', r) end
 		return ok and r or ffi.NULL
 	end
 	__mainloop__ = tonumber(ffi.cast("intptr_t", ffi.cast("void *(*)(void *)", mainloop)))
-	]]):format(string.dump(proc), util.sprintf("%08x", 16, th)))
+	]]):format(
+		debug and "true" or "false", 
+		string.dump(proc), 
+		util.sprintf("%08x", 16, th)
+	))
 	if r ~= 0 then
 		assert(false, "luaL_loadstring:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
 	end
@@ -282,9 +273,12 @@ function _M.create(proc, args, opaque, sigsegv)
 	C.lua_settop(L, -2)
 
 	local t = ffi.new("pthread_t[1]")
-	local argp = ffi.new("pulpo_thread_args_t", {
-		threads, loader.get_cache_ptr(), threads.shared_memory, threads.initial_cdecl, args
-	})
+	local argp = memory.alloc_typed("pulpo_thread_args_t")
+	argp.manager = threads
+	argp.cache = loader.get_cache_ptr()
+	argp.shmem = threads.shared_memory
+	argp.initial_cdecl = threads.initial_cdecl
+	argp.original = args
 	th.L = L
 	th.opaque = opaque
 	assert(PT.pthread_create(t, nil, ffi.cast("pulpo_thread_proc_t", mainloop), argp) == 0)

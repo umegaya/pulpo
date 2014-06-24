@@ -27,7 +27,6 @@ typedef struct pulpo_tcp_context {
 } pulpo_tcp_context_t;
 ]]
 
-
 --> helper function
 function tcp_connect(io)
 ::retry::
@@ -170,7 +169,7 @@ function _M.listen(addr, opts)
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end
-	print('listen:', fd, addr)
+	print(ffi, 'listen:', fd, addr)
 	return poller.newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
 end
 

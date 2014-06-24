@@ -27,6 +27,15 @@ loader.add_lazy_initializer(function ()
 	SIG_IGN = ffi.cast("sig_t", 1)
 	SA_RESTART = ffi.defs.SA_RESTART
 	SA_SIGINFO = ffi.defs.SA_SIGINFO
+
+	_M.dumped = false
+	_M.signal("SIGSEGV", function (sno, info, p)
+		if not _M.dumped then
+			print(sno, info.si_addr, p, debug.traceback())
+			_M.dumped = true
+			os.exit(-2)
+		end
+	end)
 end)
 
 function _M.ignore(signo)

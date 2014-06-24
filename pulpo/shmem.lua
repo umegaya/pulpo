@@ -44,7 +44,7 @@ function _M.initialize()
 						if ffi.string(e.name) == name then
 							local typename = ffi.string(e.type)
 							if not ffi.main_ffi_state.tree[typename] then
-								print('decl of ', typename, 'missing')
+								-- print('decl of ', typename, 'missing')
 								-- print(e.cdecl, name, "["..ffi.string(e.cdecl).."]")
 								ffi.cdef(ffi.string(e.cdecl))
 							end
