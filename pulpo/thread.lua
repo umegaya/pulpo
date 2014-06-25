@@ -161,7 +161,7 @@ function _M.init_cdef(cache)
 			end,
 			expand = function (t, newsize)
 				-- only called from mutex locked bloc
-				local p = memory.realloc_typed("pulpo_thread_handle_t", p, newsize)
+				local p = memory.realloc_typed("pulpo_thread_handle_t*", t.list, newsize)
 				if p then
 					t.list = p
 					t.size = newsize

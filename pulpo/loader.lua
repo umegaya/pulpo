@@ -247,7 +247,6 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 	ffi.native_cdef_with_guard(_M.ffi_state.tree, tmp_cdecls)
 	local clib
 	if lib then
-		print(ffi, 'load', lib)
 		clib = assert(ffi.load(lib), "fail to load:" .. lib)
 	else
 		clib = ffi.C

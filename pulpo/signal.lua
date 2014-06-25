@@ -28,10 +28,20 @@ loader.add_lazy_initializer(function ()
 	SA_RESTART = ffi.defs.SA_RESTART
 	SA_SIGINFO = ffi.defs.SA_SIGINFO
 
+	local function faultaddr(si)
+		if ffi.os == "OSX" then
+			return si.si_addr
+		elseif ffi.os == "Linux" then
+			return si._sifields._sigfault.si_addr
+		else
+			assert(false, "unsupported OS:"..ffi.os)
+		end
+	end
+
 	_M.dumped = false
 	_M.signal("SIGSEGV", function (sno, info, p)
 		if not _M.dumped then
-			print(sno, info.si_addr, p, debug.traceback())
+			print(sno, faultaddr(info), p, debug.traceback())
 			_M.dumped = true
 			os.exit(-2)
 		end

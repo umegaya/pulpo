@@ -5,7 +5,6 @@ local memory = require 'pulpo.memory'
 local NCLIENTS = 2000
 local NITER = 100
 local NCLIENTCORES = 2
-local NSERVERCORES = 4
 
 pulpo.initialize({
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
@@ -24,11 +23,12 @@ ffi.cdef [[
 ]]
 
 local cf = pulpo.share_memory('config', function ()
+	local socket = require 'pulpo.socket'
 	local config = memory.alloc_typed('test_config_t')
 	config.n_iter = NITER
 	config.n_client = NCLIENTS
 	config.n_client_core = NCLIENTCORES
-	config.n_server_core = NSERVERCORES
+	config.n_server_core = socket.port_reusable() and 4 or 1
 	config.finished = false
 	return 'test_config_t', config
 end)

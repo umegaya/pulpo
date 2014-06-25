@@ -6,7 +6,7 @@ local loop = pulpo.mainloop
 local config = pulpo.share_memory('config')
 local n_accept = 0
 
-tcp.listen('0.0.0.0:8888'):by(loop, function (s)
+tcp.listen('0.0.0.0:8008'):by(loop, function (s)
 	while loop.alive do
 		local fd = s:read()
 		n_accept = n_accept + 1
@@ -28,8 +28,6 @@ tcp.listen('0.0.0.0:8888'):by(loop, function (s)
 		end)
 		if (n_accept % 100) == 0 then
 			print(ffi, 'server:accept:', n_accept)
-			s:wait_read()
-			pulpo.thread.sleep(0.1)
 		end
 	end
 end)

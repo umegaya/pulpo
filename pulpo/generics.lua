@@ -7,7 +7,6 @@ local PT = ffi.load("pthread")
 local _M = {}
 
 loader.add_lazy_initializer(function ()
-	print('init generics.lua')
 	loader.load('generics.lua', {
 		"pthread_rwlock_t", 
 		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
@@ -61,7 +60,7 @@ function _M.erastic_list(type, name)
 			reserve = function (t, rsize)
 				if t.used + rsize > t.size then
 					local newsize = (t.size * 2)
-					local p = memory.realloc_typed(type, p, newsize)
+					local p = memory.realloc_typed(type, t.list, newsize)
 					if p then
 						t.list = p
 						t.size = newsize
@@ -106,7 +105,6 @@ function _M.rwlock_ptr(type, name)
 				end
 			end,
 			write = function (t, fn, ...)
-				print('write', ffi)
 				PT.pthread_rwlock_wrlock(t.lock)
 				local r = {pcall(fn, t.data, ...)}
 				local ok = table.remove(r, 1)
@@ -134,11 +132,11 @@ function _M.mutex_ptr(type, name)
 		__index = {
 			init = function (t, ctor)
 				if ctor then t:touch(ctor) end
-				PT.pthread_rwlock_init(t.lock, nil)
+				PT.pthread_mutex_init(t.lock, nil)
 			end,
 			fin = function (t, fzr)
 				if fzr then t:touch(fzr) end
-				PT.pthread_rwlock_destroy(t.lock)
+				PT.pthread_mutex_destroy(t.lock)
 			end,
 			touch = function (t, fn, ...)
 				PT.pthread_mutex_lock(t.lock)

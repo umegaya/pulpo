@@ -5,7 +5,7 @@ local memory = require 'pulpo.memory'
 local tcp = require 'pulpo.socket.tcp'
 
 local C = ffi.C
-local PT = ffi.load("ptread")
+local PT = ffi.load("pthread")
 
 local loop = pulpo.mainloop
 local config = pulpo.share_memory('config')
@@ -28,7 +28,7 @@ end)
 
 local client_msg = ("hello,luact poll"):rep(16)
 for i=0,concurrency - 1,1 do
-	tcp.connect('127.0.0.1:8888'):by(loop, function (s)
+	tcp.connect('127.0.0.1:8008'):by(loop, function (s)
 		io.stdout:write("-"); io.stdout:flush()
 		local ptr,len = ffi.new('char[256]')
 		local i = 0
@@ -37,6 +37,10 @@ for i=0,concurrency - 1,1 do
 			s:write(client_msg, #client_msg)
 			-- print('write end:', s:fd())
 			len = s:read(ptr, 256) --> malloc'ed char[?]
+			if len <= 0 then
+				print('closed', s:fd())
+				break
+			end
 			local msg = ffi.string(ptr,len)
 			assert(msg == client_msg, "illegal packet received:"..msg)
 			i = i + 1
