@@ -16,8 +16,9 @@ local tcp = require 'pulpo.socket.tcp'
 local p = poller.new()
 local limit,finish,cfinish = NCLIENTS * NITER,0,0
 
-tcp.listen('0.0.0.0:8888'):by(p, function (s)
+tcp.listen('0.0.0.0:8008'):by(p, function (s)
 	while true do
+		-- print('accept start:')
 		local fd = s:read()
 		-- print('accept:', fd:fd())
 		fd:by(p, function (s)
@@ -42,7 +43,7 @@ local start = os.clock()
 
 local client_msg = ("hello,luact poll"):rep(16)
 for i=0,NCLIENTS-1,1 do
-	tcp.connect('127.0.0.1:8888'):by(p, function (s)
+	tcp.connect('127.0.0.1:8008'):by(p, function (s)
 		local ptr,len = ffi.new('char[256]')
 		local i = 0
 		while i < NITER do

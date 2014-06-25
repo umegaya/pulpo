@@ -6,12 +6,17 @@ local util = require 'pulpo.util'
 local C = ffi.C
 local _M = {}
 
-local ffi_state = loader.load("socket.lua", {
+local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
 	"fcntl", 
 	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
-}, {
+}
+if ffi.os == "Linux" then
+	-- enum declaration required
+	table.insert(CDECLS, "enum __socket_type")
+end
+local ffi_state = loader.load("socket.lua", CDECLS, {
 	"AF_INET", "AF_INET6", 
 	"SOCK_STREAM", 
 	"SOCK_DGRAM", 
@@ -23,7 +28,7 @@ local ffi_state = loader.load("socket.lua", {
 		"SO_RCVBUF",
 	"F_GETFL",
 	"F_SETFL", 
-		"O_NONBLOCK", 
+		"O_NONBLOCK",
 	nice_to_have = {
 		"SO_REUSEPORT",
 	}, 
@@ -67,8 +72,15 @@ local ffi_state = loader.load("socket.lua", {
 assert(ffi.offsetof('struct sockaddr_in', 'sin_family') == ffi.offsetof('struct sockaddr_in6', 'sin6_family'))
 assert(ffi.offsetof('struct sockaddr_in', 'sin_port') == ffi.offsetof('struct sockaddr_in6', 'sin6_port'))
 
+local SOCK_STREAM, SOCK_DGRAM
+if ffi.os == "OSX" then
+SOCK_STREAM = ffi_state.defs.SOCK_STREAM
+SOCK_DGRAM = ffi_state.defs.SOCK_DGRAM
+elseif ffi.os == "Linux" then
+SOCK_STREAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_STREAM)
+SOCK_DGRAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_DGRAM)
+end
 local SOL_SOCKET = ffi_state.defs.SOL_SOCKET
-local SOCK_STREAM = ffi_state.defs.SOCK_STREAM
 local SO_REUSEADDR = ffi_state.defs.SO_REUSEADDR
 local SO_REUSEPORT = ffi_state.defs.SO_REUSEPORT
 local SO_SNDTIMEO = ffi_state.defs.SO_SNDTIMEO
@@ -80,6 +92,8 @@ local AF_INET = ffi_state.defs.AF_INET
 local F_SETFL = ffi_state.defs.F_SETFL
 local F_GETFL = ffi_state.defs.F_GETFL
 local O_NONBLOCK = ffi_state.defs.O_NONBLOCK
+
+local AI_NUMERICHOST = ffi_state.defs.AI_NUMERICHOST
 
 -- TODO : support PDP_ENDIAN (but which architecture uses this endian?)
 local LITTLE_ENDIAN
@@ -251,7 +265,7 @@ function _M.inet_hostbyname(addr, addrp, socktype)
 	local sa = ffi.cast('struct sockaddr*', addrp)
 	local ab, af, protocol, r
 	socktype = socktype or SOCK_STREAM
-	hint_buffer[0].ai_socktype = socktype
+	hint_buffer[0].ai_socktype = tonumber(socktype)
 	if C.getaddrinfo(host, port, hint_buffer, addrinfo_buffer) < 0 then
 		return -2
 	end
@@ -348,7 +362,7 @@ end
 
 function _M.create_stream(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp)
-	if r < 0 then
+	if r <= 0 then
 		print('invalid address:', addr)
 		return nil
 	end
@@ -368,7 +382,7 @@ end
 
 function _M.create_dgram(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp, SOCK_DGRAM)
-	if r < 0 then
+	if r <= 0 then
 		print('invalid address:', addr)
 		return nil
 	end

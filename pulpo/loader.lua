@@ -174,18 +174,18 @@ function _M.finalize()
 end
 
 local function inject_macros(state, symbols)
-	local macro_decl = ""
+	local macro_decl = {}
 	for _,sym in pairs(symbols) do
 		local src = state.defs[sym]
 		if type(src) == "number" then
-			macro_decl = (macro_decl .. "#define "..sym.." (" .. src .. ")\n")
+			table.insert(macro_decl, "#define "..sym.." (" .. src .. ")\n")
 		elseif type(src) == "string" then
-			macro_decl = (macro_decl .. "#define "..sym..' ("' .. src .. '")\n')
-		else
+			table.insert(macro_decl, "#define "..sym..' '.. src .. '\n')
+		elseif type(src) ~= "nil" then
 			assert(false, sym..": not supported type:"..type(src))
 		end
 	end
-	return macro_decl
+	return table.concat(macro_decl)
 end
 
 local function merge_nice_to_have(cdecls_or_macros)
@@ -274,7 +274,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 			--print(decl .. " is func")
 		end
 		if not ok then
-			assert(false, "declaration of "..decl.." not available")
+			assert(false, name..":declaration of "..decl.." not available")
 		end
 	end
 	for _,macro in ipairs(macros) do
@@ -307,7 +307,9 @@ function _M.load(name, cdecls, macros, lib, from)
 		if _M.cache_dir then
 			local util = require 'pulpo.util'
 			print(msg:format(err .. "\n" .. debug.traceback(), caution))
-			util.rmdir(_M.cache_dir)
+			if not _M.debug then
+				util.rmdir(_M.cache_dir)
+			end
 		else
 			print(msg:format(err .. "\n" .. debug.traceback(), ""))
 		end

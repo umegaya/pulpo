@@ -14,7 +14,7 @@ loader.add_lazy_initializer(function ()
 		"pthread_mutex_t",
 		"pthread_mutex_lock", "pthread_mutex_unlock",
 		"pthread_mutex_init", "pthread_mutex_destroy",
-	}, {}, nil, [[
+	}, {}, "pthread", [[
 		#include <pthread.h>
 	]])
 end)

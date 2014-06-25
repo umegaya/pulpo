@@ -47,7 +47,13 @@ function _M.signal(signo, handler)
 	signo = (type(signo) == 'number' and signo or _M[signo])
 	local sa = memory.managed_alloc_typed('struct sigaction')
 	local sset = memory.managed_alloc_typed('sigset_t')
-	sa[0].__sigaction_u.__sa_sigaction = handler
+	if ffi.os == "OSX" then
+		sa[0].__sigaction_u.__sa_sigaction = handler
+	elseif ffi.os == "Linux" then
+		sa[0].__sigaction_handler.sa_sigaction = handler
+	else
+		assert(false, "unsupported OS:"..ffi.os)
+	end
 	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART)
 	if C.sigemptyset(sset) ~= 0 then
 		return false
