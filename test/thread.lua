@@ -1,5 +1,6 @@
 -- package.path = ("../ffiex/?.lua;" .. package.path)
 local ffi = require 'ffiex'
+--ffi.__DEBUG_CDEF__ = true
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local thread = require 'pulpo.thread'
@@ -46,7 +47,7 @@ for i=0,util.n_cpu() - 1,1 do
 	thread.share_memory('thread_shm'..i, function ()
 		local ptr = memory.alloc_typed('int', 1)
 		ptr[0] = a[0]
-		return memory.strdup('int *'), ptr
+		return 'int', ptr
 	end)
 	local t = thread.create(function (targs)
 		local ffi = require 'ffi'

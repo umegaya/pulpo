@@ -3,6 +3,7 @@ local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
 local _M = {}
 local C = ffi.C
+local PT = ffi.load("pthread")
 local _cache,_master,_mutex
 
 ffi.cdef [[
@@ -16,10 +17,19 @@ ffi.cdef [[
 	} pulpo_parsed_info_t;
 ]]
 
+local function lock_cache()
+	if not _mutex then return end
+	PT.pthread_mutex_lock(_mutex)
+end
+local function unlock_cache()
+	if not _mutex then return end
+	PT.pthread_mutex_unlock(_mutex)
+end
+
 ffi.metatype('pulpo_parsed_info_t', {
 	__index = {
 		init = function (t, path)
-			t.size = 4
+			t.size = 16
 			t.used = 0
 			t.list = assert(memory.alloc_typed('pulpo_parsed_cache_t', t.size), 
 				"fail to allocate loader cache:"..t.size)
@@ -54,6 +64,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			if t.size <= t.used then
 				local p = memory.realloc_typed("pulpo_parsed_cache_t", t.list, t.size * 2)
 				if p then
+					print('realloc:', t.list, "=>", p)
 					t.list = p
 					t.size = (t.size * 2)
 				else
@@ -91,6 +102,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			local root = ffi.string(t.path)
 			local e = t:reserve_entry()
 			e.name = memory.strdup(name)
+			-- print('load', name, e)
 			for _,kind in ipairs({"cdecl", "macro"}) do
 				local path = root .. "/" .. name .. "." .. kind
 				local f = io.open(path, "r")
@@ -103,6 +115,13 @@ ffi.metatype('pulpo_parsed_info_t', {
 		end,
 	}
 })
+
+local function lazy_initialize()
+	--> initialize lazy init modules
+	for _,init in ipairs(_M.lazy_initializers) do
+		init()
+	end
+end
 
 function _M.initialize(cache, loader_ffi_state)
 	if loader_ffi_state then
@@ -121,10 +140,8 @@ function _M.initialize(cache, loader_ffi_state)
 		_cache = assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
 		_cache:init(_M.cache_dir)
 	end
-	--> initialize lazy init module
-	for _,init in ipairs(_M.lazy_initializers) do
-		init()
-	end
+
+	lazy_initialize()
 end
 
 _M.lazy_initializers = {}
@@ -135,6 +152,14 @@ end
 function _M.set_cache_dir(path)
 	-- print('set cache dir:'..path)
 	_M.cache_dir = path
+end
+
+function _M.init_mutex(shm)
+	_mutex = shm:find_or_init('cache_lock', function ()
+		local p = memory.alloc_typed('pthread_mutex_t')
+		PT.pthread_mutex_init(p, nil)
+		return 'pthread_mutex_t', p
+	end)
 end
 
 function _M.get_cache_ptr()
@@ -150,18 +175,18 @@ function _M.finalize()
 end
 
 local function inject_macros(state, symbols)
-	local macro_decl = ""
+	local macro_decl = {}
 	for _,sym in pairs(symbols) do
 		local src = state.defs[sym]
 		if type(src) == "number" then
-			macro_decl = (macro_decl .. "#define "..sym.." (" .. src .. ")\n")
+			table.insert(macro_decl, "#define "..sym.." (" .. src .. ")\n")
 		elseif type(src) == "string" then
-			macro_decl = (macro_decl .. "#define "..sym..' ("' .. src .. '")\n')
-		else
+			table.insert(macro_decl, "#define "..sym..' '.. src .. '\n')
+		elseif type(src) ~= "nil" then
 			assert(false, sym..": not supported type:"..type(src))
 		end
 	end
-	return macro_decl
+	return table.concat(macro_decl)
 end
 
 local function merge_nice_to_have(cdecls_or_macros)
@@ -199,22 +224,27 @@ end
 
 function _M.unsafe_load(name, cdecls, macros, lib, from)
 	local c = _cache:find(name)
-	tmp_cdecls = merge_nice_to_have(cdecls)
-	tmp_macros = merge_nice_to_have(macros)
+	local tmp_cdecls = merge_nice_to_have(cdecls)
+	local tmp_macros = merge_nice_to_have(macros)
 	if not c then
 		_M.ffi_state:parse(from)
-		local _cdecl = parser.inject(_M.ffi_state.tree, tmp_cdecls, ffi.imported_csymbols)
-		--> initialize macro definition
+		local _cdecl = parser.inject(_M.ffi_state.tree, tmp_cdecls)
+		--> initialize macro definition (this thread already contains macro definition by state:parse)
 		tmp_macros = merge_regex(_M.ffi_state.tree, tmp_macros)
 		local _macro = inject_macros(_M.ffi_state, tmp_macros)
 		--> initialize parsed information
 		c = assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
 	else
-		--- print('macro:'..ffi.string(c.macro))
+		-- print('macro:[['..ffi.string(c.macro)..']]')
 		_M.ffi_state:cdef(ffi.string(c.macro))
+		-- parse and inject cdecl to prevent double definition
+		-- print("ptr", name, c, c.cdecl, _cache.used)
+		_M.ffi_state:parse(ffi.string(c.cdecl))
+		-- print("end ptr", name, c, c.cdecl, _cache.used)
 	end
-	-- print('cdecl:'..ffi.string(c.cdecl))
-	ffi.lcpp_cdef_backup(ffi.string(c.cdecl))
+	-- print('===============================================')
+	-- print(name, 'cdecl', ffi, ffi.string(c.cdecl)) 
+	ffi.native_cdef_with_guard(_M.ffi_state.tree, tmp_cdecls)
 	local clib
 	if lib then
 		clib = assert(ffi.load(lib), "fail to load:" .. lib)
@@ -242,7 +272,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 			--print(decl .. " is func")
 		end
 		if not ok then
-			assert(false, "declaration of "..decl.." not available")
+			assert(false, name..":declaration of "..decl.." not available")
 		end
 	end
 	for _,macro in ipairs(macros) do
@@ -267,13 +297,17 @@ so luact will remove cache dir.
 try restart to recreate cdef cache.]]
 function _M.load(name, cdecls, macros, lib, from)
 	local i = 0
+	lock_cache()
 	local ret = {pcall(_M.unsafe_load, name, cdecls, macros, lib, from)}
+	unlock_cache()
 	if not table.remove(ret, 1) then
 		local err = table.remove(ret, 1)
 		if _M.cache_dir then
 			local util = require 'pulpo.util'
 			print(msg:format(err .. "\n" .. debug.traceback(), caution))
-			util.rmdir(_M.cache_dir)
+			if not _M.debug then
+				util.rmdir(_M.cache_dir)
+			end
 		else
 			print(msg:format(err .. "\n" .. debug.traceback(), ""))
 		end

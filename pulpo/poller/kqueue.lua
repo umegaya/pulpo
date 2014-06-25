@@ -1,7 +1,7 @@
-local thread = require 'pulpo.thread'
 local ffi = require 'ffiex'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
+local loader = require 'pulpo.loader'
 
 local _M = {}
 local C = ffi.C
@@ -10,7 +10,7 @@ local handlers, gc_handlers, iolist
 ---------------------------------------------------
 -- import necessary cdefs
 ---------------------------------------------------
-local ffi_state,clib = thread.load("kqueue.lua", {
+local ffi_state,clib = loader.load("kqueue.lua", {
 	"kqueue", "func kevent", "struct kevent", "socklen_t", "sockaddr_in", 
 }, {
 	"EV_ADD", "EV_ENABLE", "EV_DISABLE", "EV_DELETE", "EV_RECEIPT", "EV_ONESHOT",

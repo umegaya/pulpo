@@ -1,5 +1,6 @@
 local ffi = require 'ffiex'
 local loader = require 'pulpo.loader'
+local memory = require 'pulpo.memory'
 
 local C = ffi.C
 local _M = {}
@@ -51,18 +52,28 @@ local RLIMIT_NOFILE, RLIMIT_CORE
 loader.add_lazy_initializer(function ()
 	local ffi_state = loader.load('util.lua', {
 		"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
+		"gettimeofday", "snprintf", 
 	}, {
 		"RLIMIT_NOFILE",
 		"RLIMIT_CORE",
-	}, nil, [[
-		#include <sys/time.h> 
+	}, nil, ffi.os == "OSX" and [[
+		#include <time.h> 
 		#include <sys/resource.h>
-	]])
+		#include <stdio.h>
+	]] or (ffi.os == "Linux" and [[
+		#include <time.h>
+		#include <sys/time.h> 
+		#define __USE_GNU
+		#include <sys/resource.h>
+		#undef __USE_GNU
+		#include <stdio.h>
+	]] or assert(false, "unsupported OS:"..ffi.os)))
 
 	RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
 	RLIMIT_NOFILE = ffi_state.defs.RLIMIT_NOFILE
 
 	_M.req,_M.rem = ffi.new('struct timespec[1]'), ffi.new('struct timespec[1]')
+	_M.tval = ffi.new('struct timeval[1]')
 end)
 
 function _M.maxfd(set_to)
@@ -132,37 +143,48 @@ function _M.sleep(sec)
 	end
 end
 
+-- get current time
+function _M.clock()
+	C.gettimeofday(_M.tval, nil)
+	return tonumber(_M.tval[0].tv_sec) + (tonumber(_M.tval[0].tv_usec) / 1000000)
+end
 --> transfer executable information through string
 function _M.decode_proc(code)
 	local executable
-	local ok, r = pcall(load, code)
-	if ok and r then
-		executable = r
-	elseif code:find('^%.') or code:find('%/') then
-		ok, r = pcall(loadfile, code)
-		if ok and r then
-			executable = r
-		end
+	local f, err = loadstring(code)
+	if f then
+		executable = f
 	else
-		local mod = executable
-		executable = function ()
-			local ok, r = pcall(require, mod)
-			if not ok then error(r) end
+		f, err = loadfile(code)
+		if f then
+			executable = f
+		else
+			print('fail to load code as lua file:', err)
+			executable = function ()
+				local ok, r = pcall(require, code)
+				--if not ok then error(r) end
+			end
 		end
 	end
 	return executable
 end
 function _M.encode_proc(proc)
-	if type(executable) == "string" then
+	if type(proc) == "string" then
 		return proc
-	elseif type(executable) ~= "function" then
-		error('invalid executable:'..type(executable))
+	elseif type(proc) ~= "function" then
+		error('invalid executable:'..type(proc))
 	end
 	return string.dump(proc)
 end
-function _M.proc_mem_name(group)
-	return ("__%s_proc__"):format(group)
+function _M.create_proc(executable)
+	return _M.decode_proc(_M.encode_proc(executable))
 end
 
+
+function _M.sprintf(fmt, size, ...)
+	local p = memory.managed_alloc_typed('char', size + 1)
+	local n = C.snprintf(p, size + 1, fmt, ...)
+	return ffi.string(p, n)
+end
 
 return _M

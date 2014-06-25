@@ -27,7 +27,6 @@ typedef struct pulpo_tcp_context {
 } pulpo_tcp_context_t;
 ]]
 
-
 --> helper function
 function tcp_connect(io)
 ::retry::
@@ -96,7 +95,6 @@ function tcp_write(io, ptr, len)
 				so I guess if try to write to such an connection, EPIPE may occur.
 				because if I increasing listen backlog size, EPIPE not happen.
 			]]
-			thread.sleep(0.1) -- TODO : use lightweight sleep by timer facility
 			tcp_connect(io)
 			goto retry
 		else
@@ -170,7 +168,7 @@ function _M.listen(addr, opts)
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end
-	print('listen:', fd, addr)
+	print(ffi, 'listen:', fd, addr)
 	return poller.newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
 end
 
