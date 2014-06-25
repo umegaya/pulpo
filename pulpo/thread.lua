@@ -216,7 +216,7 @@ function _M.init_worker(args)
 	threads = ffi.cast("pulpo_thread_manager_t*", args.manager)
 	-- wait for this thread appears in global thread list
 	local cnt = 100
-	while not threads:find(C.pthread_self()) and (cnt > 0) do
+	while not threads:find(PT.pthread_self()) and (cnt > 0) do
 		thread.sleep(0.01)
 		cnt = cnt - 1
 	end

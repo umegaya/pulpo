@@ -3,9 +3,11 @@ local memory = require 'pulpo.memory'
 local loader = require 'pulpo.loader'
 
 local C = ffi.C
+local PT = ffi.load("pthread")
 local _M = {}
 
 loader.add_lazy_initializer(function ()
+	print('init generics.lua')
 	loader.load('generics.lua', {
 		"pthread_rwlock_t", 
 		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
@@ -86,17 +88,17 @@ function _M.rwlock_ptr(type, name)
 		__index = {
 			init = function (t, ctor)
 				if ctor then t:write(ctor) end
-				C.pthread_rwlock_init(t.lock, nil)
+				PT.pthread_rwlock_init(t.lock, nil)
 			end,
 			fin = function (t, fzr)
 				if fzr then t:write(fzr) end
-				C.pthread_rwlock_destroy(t.lock)
+				PT.pthread_rwlock_destroy(t.lock)
 			end,
 			read = function (t, fn, ...)
-				C.pthread_rwlock_rdlock(t.lock)
+				PT.pthread_rwlock_rdlock(t.lock)
 				local r = {pcall(fn, t.data, ...)}
 				local ok = table.remove(r, 1)
-				C.pthread_rwlock_unlock(t.lock)
+				PT.pthread_rwlock_unlock(t.lock)
 				if ok then
 					return unpack(r)
 				else
@@ -104,10 +106,11 @@ function _M.rwlock_ptr(type, name)
 				end
 			end,
 			write = function (t, fn, ...)
-				C.pthread_rwlock_wrlock(t.lock)
+				print('write', ffi)
+				PT.pthread_rwlock_wrlock(t.lock)
 				local r = {pcall(fn, t.data, ...)}
 				local ok = table.remove(r, 1)
-				C.pthread_rwlock_unlock(t.lock)
+				PT.pthread_rwlock_unlock(t.lock)
 				if ok then
 					return unpack(r)
 				else
@@ -131,17 +134,17 @@ function _M.mutex_ptr(type, name)
 		__index = {
 			init = function (t, ctor)
 				if ctor then t:touch(ctor) end
-				C.pthread_rwlock_init(t.lock, nil)
+				PT.pthread_rwlock_init(t.lock, nil)
 			end,
 			fin = function (t, fzr)
 				if fzr then t:touch(fzr) end
-				C.pthread_rwlock_destroy(t.lock)
+				PT.pthread_rwlock_destroy(t.lock)
 			end,
 			touch = function (t, fn, ...)
-				C.pthread_mutex_lock(t.lock)
+				PT.pthread_mutex_lock(t.lock)
 				local r = {pcall(fn, t.data, ...)}
 				local ok = table.remove(r, 1)
-				C.pthread_mutex_unlock(t.lock)
+				PT.pthread_mutex_unlock(t.lock)
 				if ok then
 					return unpack(r)
 				else

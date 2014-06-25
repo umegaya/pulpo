@@ -3,6 +3,7 @@ local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
 local _M = {}
 local C = ffi.C
+local PT = ffi.load("pthread")
 local _cache,_master,_mutex
 
 ffi.cdef [[
@@ -18,11 +19,11 @@ ffi.cdef [[
 
 local function lock_cache()
 	if not _mutex then return end
-	C.pthread_mutex_lock(_mutex)
+	PT.pthread_mutex_lock(_mutex)
 end
 local function unlock_cache()
 	if not _mutex then return end
-	C.pthread_mutex_unlock(_mutex)
+	PT.pthread_mutex_unlock(_mutex)
 end
 
 ffi.metatype('pulpo_parsed_info_t', {
@@ -156,7 +157,7 @@ end
 function _M.init_mutex(shm)
 	_mutex = shm:find_or_init('cache_lock', function ()
 		local p = memory.alloc_typed('pthread_mutex_t')
-		C.pthread_mutex_init(p, nil)
+		PT.pthread_mutex_init(p, nil)
 		return 'pthread_mutex_t', p
 	end)
 end
@@ -222,13 +223,10 @@ local function merge_regex(tree, macros)
 end
 
 function _M.unsafe_load(name, cdecls, macros, lib, from)
-	local i = 0
 	local c = _cache:find(name)
 	local tmp_cdecls = merge_nice_to_have(cdecls)
 	local tmp_macros = merge_nice_to_have(macros)
-	-- print(ffi, 'unsafe_load', i); i = i + 1
 	if not c then
-		-- print('init:'..name)
 		_M.ffi_state:parse(from)
 		local _cdecl = parser.inject(_M.ffi_state.tree, tmp_cdecls)
 		--> initialize macro definition (this thread already contains macro definition by state:parse)
@@ -249,6 +247,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 	ffi.native_cdef_with_guard(_M.ffi_state.tree, tmp_cdecls)
 	local clib
 	if lib then
+		print(ffi, 'load', lib)
 		clib = assert(ffi.load(lib), "fail to load:" .. lib)
 	else
 		clib = ffi.C
