@@ -6,6 +6,8 @@ local util = require 'pulpo.util'
 local fs = require 'pulpo.fs'
 local signal = require 'pulpo.signal'
 -- ffi.__DEBUG_CDEF__ = true
+local log = require 'pulpo.logger'
+log.initialize()
 
 local _M = {}
 local iolist = ffi.NULL
@@ -36,6 +38,10 @@ end
 function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
+function io_index.close(t)
+	logger.info("fd=%d closed by user", t:nfd())
+	coroutine.yield()
+end
 
 function poller_index.add(t, io, co)
 	co = ((type(co) == "function") and coroutine.wrap(co) or co)
@@ -48,7 +54,7 @@ function poller_index.add(t, io, co)
 			end
 		end
 	else
-		print('abort by error:', rev)
+		logger.warning('abort by error:', rev)
 	end
 	io:fin()
 	return true

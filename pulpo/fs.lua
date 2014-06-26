@@ -19,7 +19,6 @@ function dir_idx.iter(t)
 		if ent ~= ffi.NULL then
 			return ffi.string(ent.d_name)
 		else
-			print('return nil')
 			return nil
 		end
 	end, t.dir

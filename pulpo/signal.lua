@@ -41,7 +41,7 @@ loader.add_lazy_initializer(function ()
 	_M.dumped = false
 	_M.signal("SIGSEGV", function (sno, info, p)
 		if not _M.dumped then
-			print(sno, faultaddr(info), p, debug.traceback())
+			logger.fatal(sno, faultaddr(info), p, debug.traceback())
 			_M.dumped = true
 			os.exit(-2)
 		end

@@ -84,7 +84,7 @@ end
 function io_index.add_to(t, poller)
 	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_ADD, t:fd(), t.ev)
 	if n ~= 0 then
-		print('epoll event add error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('epoll event add error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
 	return true
@@ -92,7 +92,7 @@ end
 function io_index.activate(t, poller)
 	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_MOD, t:fd(), t.ev)
 	if n ~= 0 then
-		print('epoll event mod error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('epoll event mod error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
 	return true
@@ -100,7 +100,7 @@ end
 function io_index.remove_from(t, poller)
 	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_DEL, t:fd(), t.ev)
 	if n ~= 0 then
-		print('epoll event remove error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('epoll event remove error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
 	gc_handlers[t:type()](t)
@@ -123,7 +123,7 @@ end
 function poller_index.init(t, maxfd)
 	t.epfd = C.epoll_create(maxfd)
 	assert(t.epfd >= 0, "epoll create fails:"..ffi.errno())
-	print('epfd:', tonumber(t.epfd))
+	logger.debug('epfd:', tonumber(t.epfd))
 	t.maxfd = maxfd
 	t.nevents = maxfd
 	t.alive = true
@@ -138,12 +138,9 @@ end
 function poller_index.wait(t)
 	local n = C.epoll_wait(t.epfd, t.events, t.nevents, t.timeout)
 	if n <= 0 then
-		if n < 0 then print('epoll error:'..ffi.errno()) end
+		-- print('epoll error:'..ffi.errno())
 		return n
 	end
-	--if n > 0 then
-	--	print('n = ', n)
-	--end
 	for i=0,n-1,1 do
 		local ev = t.events + i
 		local fd = tonumber(ev.data.fd)
@@ -156,7 +153,7 @@ function poller_index.wait(t)
 				end
 			end
 		else
-			print('abort by error:', rev)
+			logger.warning('abort by error:', rev)
 		end
 		local io = iolist + fd
 		io:fin()

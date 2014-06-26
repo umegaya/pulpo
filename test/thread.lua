@@ -9,7 +9,7 @@ thread.initialize({
 	cdef_cache_dir = './tmp/cdefs'
 })
 
-print('----- test1 -----')
+logger.info('----- test1 -----')
 local args = memory.alloc_typed('int', 3)
 args[0] = 1
 args[1] = 2
@@ -24,7 +24,7 @@ local t = thread.create(function (targs)
 	void free(void *p);
 	]]
 	local a = ffi.cast('int*', targs)
-	print('hello from pulpo:', (a[0] + a[1] + a[2]))
+	logger.info('hello from pulpo:', (a[0] + a[1] + a[2]))
 	assert((a[0] + a[1] + a[2]) == 6, "correctly passed values into new thread")
 	ffi.C.free(targs)
 	local r = ffi.cast('int*', ffi.C.malloc(ffi.sizeof('int[1]')))
@@ -38,7 +38,7 @@ assert(r[0] == 111)
 
 
 
-print('----- test2 -----')
+logger.info('----- test2 -----')
 local threads = {}
 local params = {}
 for i=0,util.n_cpu() - 1,1 do
@@ -54,7 +54,7 @@ for i=0,util.n_cpu() - 1,1 do
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
 		local idx = (ffi.cast('int*', targs))[0]
-		print('thread:', thread.me(), idx)
+		logger.warn('thread:', thread.me(), idx)
 		local ptr = thread.share_memory('thread_shm'..idx)
 		ptr[0] = (idx + 1) * 111
 		while ptr[0] > 0 do

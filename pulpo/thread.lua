@@ -9,6 +9,8 @@ local util = require 'pulpo.util'
 local gen = require 'pulpo.generics'
 local shmem = require 'pulpo.shmem'
 local fs = require 'pulpo.fs'
+local log = require 'pulpo.logger'
+log.initialize()
 
 local _M = {}
 local C = ffi.C
@@ -104,12 +106,15 @@ function _M.init_cdef(cache)
 				)
 			end,
 			fin = function (t)
-				if t.list then
+				if t.list ~= ffi.NULL then
 					for i=0,t.used-1,1 do
 						local th = t.list[i]
 						_M.destroy(th, true)
 					end
 					memory.free(t.list)
+				end
+				if t.initial_cdecl ~= ffi.NULL then
+					memory.free(t.initial_cdecl)
 				end
 				PT.pthread_mutex_destroy(t.mtx)
 				t.shared_memory[0]:fin()
@@ -166,7 +171,7 @@ function _M.init_cdef(cache)
 					t.list = p
 					t.size = newsize
 				else
-					print('expand thread list fails:'..newsize)
+					logger.error('expand thread list fails:'..newsize)
 				end
 				return p
 			end,

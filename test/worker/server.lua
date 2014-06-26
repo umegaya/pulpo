@@ -27,7 +27,7 @@ tcp.listen('0.0.0.0:8008'):by(loop, function (s)
 			end
 		end)
 		if (n_accept % 100) == 0 then
-			print(ffi, 'server:accept:', n_accept)
+			logger.warn('server:accept:', n_accept)
 		end
 	end
 end)

@@ -64,11 +64,11 @@ ffi.metatype('pulpo_parsed_info_t', {
 			if t.size <= t.used then
 				local p = memory.realloc_typed("pulpo_parsed_cache_t", t.list, t.size * 2)
 				if p then
-					print('realloc:', t.list, "=>", p)
+					logger.debug('realloc:', t.list, "=>", p)
 					t.list = p
 					t.size = (t.size * 2)
 				else
-					print('loaderer:add:realloc fails:'..tostring(t.size * 2))
+					logger.error('loaderer:add:realloc fails:'..tostring(t.size * 2))
 					return nil
 				end
 			end
@@ -304,12 +304,12 @@ function _M.load(name, cdecls, macros, lib, from)
 		local err = table.remove(ret, 1)
 		if _M.cache_dir then
 			local util = require 'pulpo.util'
-			print(msg:format(err .. "\n" .. debug.traceback(), caution))
+			logger.error(msg:format(err .. "\n" .. debug.traceback(), caution))
 			if not _M.debug then
 				util.rmdir(_M.cache_dir)
 			end
 		else
-			print(msg:format(err .. "\n" .. debug.traceback(), ""))
+			logger.error(msg:format(err .. "\n" .. debug.traceback(), ""))
 		end
 		os.exit(-1)
 	end

@@ -65,7 +65,7 @@ function _M.erastic_list(type, name)
 						t.list = p
 						t.size = newsize
 					else
-						print('expand '..type..' fails:'..newsize)
+						logger.error('expand '..type..' fails:'..newsize)
 					end
 				end
 				return p

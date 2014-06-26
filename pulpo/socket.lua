@@ -303,41 +303,40 @@ function _M.setsockopt(fd, opts)
 	if not opts.blocking then
 		local f = C.fcntl(fd, F_GETFL, 0) 
 		if f < 0 then
-			print(ERROR,SOCKOPT,("fcntl fail (get flag) errno=%d"):format(ffi.errno()));
+			logger.error("fcntl fail (get flag) errno=", ffi.errno())
 			return -6
 		end
 		-- fcntl declaration is int fcntl(int, int, ...), 
 		-- that means third argument type is vararg, which less converted than usual ffi function call 
 		-- (eg. lua-number to double to int), so you need to convert to int by yourself
 		if C.fcntl(fd, F_SETFL, ffi.new('int', bit.bor(f, O_NONBLOCK))) < 0 then
-			print(ERROR,SOCKOPT,("fcntl fail (set nonblock) errno=%d"):format(ffi.errno()));
+			logger.error("fcntl fail (set nonblock) errno=", ffi.errno())
 			return -1
 		end
 		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')')
 	end
 	if opts.timeout > 0 then
-		assert(false, "i dont set timeout for opts!!!!"..opts.timeout)
 		local timeout = util.sec2timeval(tonumber(opts.timeout))
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, timeout, ffi.sizeof('struct timeval')) < 0 then
-			print(ERROR,SOCKOPT,("setsockopt (sndtimeo) errno=%d"):format(ffi.errno()));
+			logger.error("setsockopt (sndtimeo) errno=", ffi.errno());
 			return -2
 		end
 		if C.setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, timeout, ffi.sizeof('struct timeval')) < 0 then
-			print(ERROR,SOCKOPT,("setsockopt (rcvtimeo) errno=%d"):format(ffi.errno()));
+			logger.error("setsockopt (rcvtimeo) errno=", ffi.errno());
 			return -3
 		end
 	end
 	if opts.wblen.data > 0 then
-		print(("%d, set wblen to %u\n"):format(fd, tonumber(opts.wblen)));
+		logger.info(fd, "set wblen to", tonumber(opts.wblen));
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof(opts.wblen.p)) < 0 then
-			print(ERROR,SOCKOPT,"setsockopt (sndbuf) errno=%d", errno);
+			logger.error("setsockopt (sndbuf) errno=", errno);
 			return -4
 		end
 	end
 	if opts.rblen.data > 0 then
-		print(("%d, set rblen to %u\n"):format(fd, tonumber(opts.wblen.data)));
+		logger.info(fd, "set rblen to", tonumber(opts.wblen));
 		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof(opts.rblen.p)) < 0 then
-			print(ERROR,SOCKOPT,"setsockopt (rcvbuf) errno=%d", errno);
+			logger.error("setsockopt (rcvbuf) errno=", errno);
 			return -5
 		end
 	end
@@ -363,17 +362,17 @@ end
 function _M.create_stream(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp)
 	if r <= 0 then
-		print('invalid address:', addr)
+		logger.error('invalid address:', addr)
 		return nil
 	end
 	addrinfo.alen[0] = r
 	local fd = C.socket(af, SOCK_STREAM, 0)
 	if fd < 0 then
-		print('fail to create socket:'..ffi.errno())
+		logger.error('fail to create socket:', ffi.errno())
 		return nil
 	end
 	if _M.setsockopt(fd, opts) < 0 then
-		print('fail to set socket options:'..ffi.errno())
+		logger.error('fail to set socket options:', ffi.errno())
 		C.close(fd)
 		return nil
 	end
@@ -383,17 +382,17 @@ end
 function _M.create_dgram(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp, SOCK_DGRAM)
 	if r <= 0 then
-		print('invalid address:', addr)
+		logger.error('invalid address:', addr)
 		return nil
 	end
 	addrinfo.alen[0] = r
 	local fd = C.socket(af, SOCK_DGRAM, 0)
 	if fd < 0 then
-		print('fail to create socket:'..ffi.errno())
+		logger.error('fail to create socket:', ffi.errno())
 		return nil
 	end
 	if _M.setsockopt(fd, opts) < 0 then
-		print('fail to set socket options:'..ffi.errno())
+		logger.error('fail to set socket options:', ffi.errno())
 		C.close(fd)
 		return nil
 	end

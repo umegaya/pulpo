@@ -38,7 +38,7 @@ for i=0,concurrency - 1,1 do
 			-- print('write end:', s:fd())
 			len = s:read(ptr, 256) --> malloc'ed char[?]
 			if len <= 0 then
-				print('closed', s:fd())
+				logger.debug('closed', s:fd())
 				break
 			end
 			local msg = ffi.string(ptr,len)
@@ -51,7 +51,7 @@ for i=0,concurrency - 1,1 do
 		PT.pthread_rwlock_unlock(finished.lock)
 		if finished.data.cnt >= config.n_client then
 			io.stdout:write("\n")
-			print('test takes', os.clock() - finished.data.start_time, 'sec')
+			logger.info('test takes', os.clock() - finished.data.start_time, 'sec')
 			pulpo.stop()
 			config.finished = true
 		end

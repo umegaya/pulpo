@@ -39,7 +39,7 @@ function tcp_connect(io)
 			io:wait_write()
 			return
 		elseif eno == ECONNREFUSED then
-			print('TODO: server listen backlog may exceed: try reconnection', eno)
+			logger.info('TODO: server listen backlog may exceed: try reconnection', eno)
 			thread.sleep(0.1) -- TODO : use lightweight sleep by timer facility
 			goto retry
 		else
@@ -168,7 +168,7 @@ function _M.listen(addr, opts)
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end
-	print(ffi, 'listen:', fd, addr)
+	logger.info('listen:', fd, addr)
 	return poller.newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
 end
 

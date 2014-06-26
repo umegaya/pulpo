@@ -58,5 +58,5 @@ end)
 
 while not cf.finished do
 	pulpo.thread.sleep(5)
-	print('finished=', cf.finished)
+	logger.info('finished=', cf.finished)
 end

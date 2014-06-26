@@ -1,13 +1,37 @@
 local ffi = require 'ffiex'
+local C = ffi.C
+
+local _M = {}
+local log = require 'pulpo.logger'
+local term = require 'pulpo.terminal'
+local function init_logger()
+	log.initialize()
+	log.redirect("default", function (setting, ...)
+		term[setting.color]()
+		io.write(_M.logpfx)
+		print(...)
+		term.resetcolor()
+		io.stdout:flush()
+	end)
+	_G.original_assert = _G.assert
+	_G.assert = function (cond, msgobj)
+		if not cond then
+			logger.fatal(msgobj)
+			_G.error(msgobj, 0)
+		end
+		return cond
+	end
+end
+init_logger()
+
 local thread = require 'pulpo.thread'
 local poller = require 'pulpo.poller'
 local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
 local util = require 'pulpo.util'
 
-local _M = {}
-
 _M.thread = thread
+_M.logpfx = "[main]"
 _M.poller = poller
 _M.share_memory = thread.share_memory
 
@@ -27,7 +51,12 @@ function _M.initialize(opts)
 end
 
 function _M.init_share_memory()
-	_M.share_memory("__thread_id_seed__", gen.rwlock_ptr("int"))
+	ffi.cdef[[
+		typedef struct pulpo_thread_idseed {
+			int cnt;
+		} pulpo_thread_idseed_t;
+	]]
+	_M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
 -- others initialized by this.
@@ -42,6 +71,7 @@ function _M.init_worker(tls)
 	local opaque = thread.opaque(thread.me(), "pulpo_opaque_t*")
 	opaque.poller = _M.mainloop	
 	_M.tid = opaque.id
+	_M.logpfx = util.sprintf("[%04x]", 8, ffi.new('int', opaque.id))
 	return opaque
 end
 
@@ -61,11 +91,14 @@ end
 
 function create_opaque(fn, group)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
-	r.id = _M.share_memory("__thread_id_seed__"):write(function (data) 
-		data = data + 1
-		if data > 65000 then data = 1 end
-		return data
-	end)
+	-- generate unique seed
+	local seed = _M.share_memory("__thread_id_seed__")
+	C.pthread_rwlock_wrlock(seed.lock)
+		seed.data.cnt = seed.data.cnt + 1
+		if seed.data.cnt > 65000 then seed.data.cnt = 1 end
+		r.id = seed.data.cnt
+	C.pthread_rwlock_unlock(seed.lock)
+	
 	r.group = memory.strdup(group)
 	local proc = util.encode_proc(fn)
 	r.proc = memory.strdup(proc)

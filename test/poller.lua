@@ -66,10 +66,10 @@ for i=0,NCLIENTS-1,1 do
 	end)
 end
 
-print('start', p)
+logger.info('start', p)
 p:loop()
 
-print('end', os.clock() - start, 'sec')
+logger.info('end', os.clock() - start, 'sec')
 assert(limit <= finish and limit <= cfinish, "not all client/server finished but poller terminated")
 poller.finalize()
-print('success')
+logger.info('success')

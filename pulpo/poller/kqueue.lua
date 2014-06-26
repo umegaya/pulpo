@@ -110,7 +110,7 @@ function io_index.add_to(t, poller)
 	local n = C.kevent(poller.kqfd, t.ev, 1, nil, 0, poller.timeout)
 	-- print(poller.kqfd, n, t.ev.ident, t.ev.filter)
 	if n ~= 0 then
-		print('kqueue event add error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('kqueue event add error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
 	return true
@@ -120,7 +120,7 @@ function io_index.remove_from(t, poller)
 	local n = C.kevent(poller.kqfd, t.ev, 1, nil, 0, poller.timeout)
 	-- print(poller.kqfd, n, t.ident)
 	if n ~= 0 then
-		print('kqueue event remove error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('kqueue event remove error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
 	gc_handlers[t:type()](t)
@@ -175,7 +175,7 @@ function poller_index.wait(t)
 				end
 			end
 		else
-			print('abort by error:', rev)
+			logger.warning('abort by error:', rev)
 		end
 		local io = iolist + fd
 		io:fin()

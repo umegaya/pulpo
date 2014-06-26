@@ -58,6 +58,7 @@ loader.add_lazy_initializer(function ()
 		"RLIMIT_CORE",
 	}, nil, ffi.os == "OSX" and [[
 		#include <time.h> 
+		#include <sys/time.h>
 		#include <sys/resource.h>
 		#include <stdio.h>
 	]] or (ffi.os == "Linux" and [[
@@ -159,7 +160,6 @@ function _M.decode_proc(code)
 		if f then
 			executable = f
 		else
-			print('fail to load code as lua file:', err)
 			executable = function ()
 				local ok, r = pcall(require, code)
 				--if not ok then error(r) end
