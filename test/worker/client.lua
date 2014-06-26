@@ -42,7 +42,7 @@ for i=0,concurrency - 1,1 do
 				break
 			end
 			local msg = ffi.string(ptr,len)
-			assert(msg == client_msg, "illegal packet received:"..msg)
+			pulpo_assert(msg == client_msg, "illegal packet received:"..msg)
 			i = i + 1
 		end
 		PT.pthread_rwlock_wrlock(finished.lock)

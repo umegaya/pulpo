@@ -13,8 +13,7 @@ local function init_logger()
 		term.resetcolor()
 		io.stdout:flush()
 	end)
-	_G.original_assert = _G.assert
-	_G.assert = function (cond, msgobj)
+	_G.pulpo_assert = function (cond, msgobj)
 		if not cond then
 			logger.fatal(msgobj)
 			_G.error(msgobj, 0)
