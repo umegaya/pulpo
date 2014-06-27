@@ -2,6 +2,8 @@ local loader = require 'pulpo.loader'
 local ffi = require 'ffiex'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
+local errno = require 'pulpo.errno'
+local event = require 'pulpo.event'
 
 local _M = {}
 local C = ffi.C
@@ -31,6 +33,7 @@ local EPOLLRDHUP = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLRD
 local EPOLLPRI = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLPRI))
 local EPOLLERR = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLERR))
 local EPOLLHUP = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLHUP))
+local EPOLLET = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLET))
 local EPOLLONESHOT = tonumber(ffi.cast('enum EPOLL_EVENTS', ffi_state.defs.EPOLLONESHOT))
 
 
@@ -56,17 +59,28 @@ struct epoll_event {
 };
 ]]
 function io_index.init(t, fd, type, ctx)
-	assert(bit.band(t.ev.events, EPOLLERR) or t.ev.data.fd == 0, 
+	pulpo_assert(bit.band(t.ev.events, EPOLLERR) or t.ev.data.fd == 0, 
 		"already used event buffer:"..tonumber(t.ev.data.fd))
 	t.ev.events = bit.bor(EPOLLIN, EPOLLONESHOT)
 	t.ev.data.fd = fd
 	udatalist[tonumber(fd)] = ffi.cast('void *', ctx)
 	t.kind = type
+	t.rpoll = 0
+	t.wpoll = 0
+	event.create_read(t)
+	event.create_write(t)
 end
 function io_index.fin(t)
 	t.ev.events = EPOLLERR
+	-- if we does not use dup(), no need to remove fd from epoll fd.
+	-- so in pulpo, I don't use dup.
+	-- if 3rdparty lib use dup(), please do it in gc_handler XD
+	-- (just call t:remove_from_poller())
 	gc_handlers[t:type()](t)
 end
+io_index.wait_read = event.wait_read
+io_index.wait_write = event.wait_write
+--[[
 function io_index.wait_read(t)
 	t.ev.events = bit.bor(EPOLLIN, EPOLLONESHOT)
 	-- print('wait_read', t:fd(), t.ev.events)
@@ -81,6 +95,31 @@ function io_index.wait_write(t)
 	-- if log then print('wait_write returns', t:fd()) end
 	t.ev.events = r.events
 end
+]]
+function io_index.read_yield(t)
+	if t.rpoll == 0 then
+		t.ev.events = bit.bor(EPOLLIN, EPOLLET, t.wpoll ~= 0 and EPOLLOUT or 0)
+		t:activate(t.p)
+		t.rpoll = 1
+	end
+end
+function io_index.write_yield(t)
+	if t.wpoll == 0 then
+		t.ev.events = bit.bor(EPOLLOUT, EPOLLET, t.rpoll ~= 0 and EPOLLIN or 0)
+		t:activate(t.p)
+		t.wpoll = 1
+	end
+end
+function io_index.emit_io(t, ev)
+	if bit.band(ev.events, EPOLLIN) then
+		t.rpoll = 0
+		event.emit_read(t)
+	end
+	if bit.band(ev.events, EPOLLOUT) then
+		t.wpoll = 0
+		event.emit_write(t)
+	end
+end
 function io_index.add_to(t, poller)
 	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_ADD, t:fd(), t.ev)
 	if n ~= 0 then
@@ -92,13 +131,18 @@ end
 function io_index.activate(t, poller)
 	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_MOD, t:fd(), t.ev)
 	if n ~= 0 then
-		logger.error('epoll event mod error:'..ffi.errno().."\n"..debug.traceback())
-		return false
+		local eno = errno.errno()
+		if eno ~= errno.ENOENT then
+			logger.error('epoll event mod error:'..eno.."\n"..debug.traceback())
+			return false
+		else
+			return t:add_to(poller)
+		end
 	end
 	return true
 end
-function io_index.remove_from(t, poller)
-	local n = C.epoll_ctl(poller.epfd, EPOLL_CTL_DEL, t:fd(), t.ev)
+function io_index.remove_from_poller(t)
+	local n = C.epoll_ctl(t.poller.epfd, EPOLL_CTL_DEL, t:fd(), t.ev)
 	if n ~= 0 then
 		logger.error('epoll event remove error:'..ffi.errno().."\n"..debug.traceback())
 		return false
@@ -122,7 +166,7 @@ end
 ---------------------------------------------------
 function poller_index.init(t, maxfd)
 	t.epfd = C.epoll_create(maxfd)
-	assert(t.epfd >= 0, "epoll create fails:"..ffi.errno())
+	pulpo_assert(t.epfd >= 0, "epoll create fails:"..ffi.errno())
 	logger.debug('epfd:', tonumber(t.epfd))
 	t.maxfd = maxfd
 	t.nevents = maxfd
@@ -135,7 +179,7 @@ end
 function poller_index.set_timeout(t, sec)
 	t.timeout = sec * 1000 -- msec
 end
-function poller_index.wait(t)
+function poller_index._wait(t)
 	local n = C.epoll_wait(t.epfd, t.events, t.nevents, t.timeout)
 	if n <= 0 then
 		-- print('epoll error:'..ffi.errno())
@@ -144,7 +188,7 @@ function poller_index.wait(t)
 	for i=0,n-1,1 do
 		local ev = t.events + i
 		local fd = tonumber(ev.data.fd)
-		local co = assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
+		local co = pulpo_assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
 		local ok, rev = pcall(co, ev)
 		if ok then
 			if rev then
@@ -160,6 +204,19 @@ function poller_index.wait(t)
 		::next::
 	end
 end
+function poller_index.wait(t)
+	local n = C.epoll_wait(t.epfd, t.events, t.nevents, t.timeout)
+	if n <= 0 then
+		-- print('kqueue error:'..ffi.errno())
+		return n
+	end
+	for i=0,n-1,1 do
+		local ev = t.events + i
+		local io = iolist + ev.ident
+		io:emit_io(ev)
+	end
+end
+
 
 
 
@@ -170,11 +227,7 @@ poller_cdecl = function (maxfd)
 	return ([[
 		typedef int pulpo_fd_t;
 		typedef struct epoll_event pulpo_event_t;
-		typedef struct pulpo_io {
-			pulpo_event_t ev;
-			unsigned char kind, padd[3];
-		} pulpo_io_t;
-		typedef struct poller {
+		typedef struct pulpo_poller {
 			bool alive;
 			pulpo_fd_t epfd;
 			pulpo_event_t events[%d];
@@ -182,6 +235,11 @@ poller_cdecl = function (maxfd)
 			int timeout;
 			int maxfd;
 		} pulpo_poller_t;
+		typedef struct pulpo_io {
+			pulpo_event_t ev;
+			unsigned char kind, rpoll, wpoll, padd;
+			pulpo_poller_t *p;
+		} pulpo_io_t;
 	]]):format(maxfd)
 end
 
@@ -191,7 +249,7 @@ function _M.initialize(args)
 	--> generate run time cdef
 	ffi.cdef(poller_cdecl(args.poller.maxfd))
 	ffi.metatype('pulpo_poller_t', { __index = util.merge_table(args.poller_index, poller_index) })
-        ffi.metatype('pulpo_io_t', { __index = util.merge_table(args.io_index, io_index) })
+	ffi.metatype('pulpo_io_t', { __index = util.merge_table(args.io_index, io_index) })
 
 	--> TODO : share it between threads (but thinking of cache coherence, may better seperated)
 	udatalist = memory.alloc_fill_typed('void *', args.poller.maxfd)

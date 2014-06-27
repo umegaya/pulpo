@@ -2,6 +2,7 @@ local ffi = require 'ffiex'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local loader = require 'pulpo.loader'
+local event = require 'pulpo.event'
 
 local _M = {}
 local C = ffi.C
@@ -76,20 +77,31 @@ local poller_cdecl, poller_index, io_index, event_index = nil, {}, {}, {}
 		void      *udata;       /* 不透明なユーザデータ識別子 */
 	};
 ]]
-function io_index.init(t, fd, type, ctx)
+function io_index.init(t, poller, fd, type, ctx)
 	t.ev.filter = EVFILT_READ
 	t.ev.flags = bit.bor(EV_ADD, EV_ONESHOT)
-	assert(bit.band(t.ev.flags, EV_DELETE) or t.ev.ident == 0, 
+	pulpo_assert(bit.band(t.ev.flags, EV_DELETE) or t.ev.ident == 0, 
 		"already used event buffer:"..tonumber(t.ev.ident))
 	t.ev.ident = fd
 	t.ev.udata = ctx and ffi.cast('void *', ctx) or ffi.NULL
 	t.kind = type
+	t.rpoll = 0
+	t.wpoll = 0
+	t.p = poller
+	event.create_read(t)
+	event.create_write(t)
 end
 function io_index.fin(t)
+	logger.info('io_index.fin:', t:fd())
 	t.ev.flags = EV_DELETE
+	event.destroy(t)
 	gc_handlers[t:type()](t)
 end
+io_index.wait_read = event.wait_read
+io_index.wait_write = event.wait_write
+--[[
 function io_index.wait_read(t)
+	event.wait_read(t)
 	t.ev.filter = EVFILT_READ
 	-- if log then print('wait_read', t:fd()) end
 	local r = coroutine.yield(t)
@@ -98,6 +110,7 @@ function io_index.wait_read(t)
 	t.ev.data = r.data
 end
 function io_index.wait_write(t)
+	event.wait_write(t)
 	t.ev.filter = EVFILT_WRITE
 	-- if log then print('wait_write', t:fd()) end
 	local r = coroutine.yield(t)
@@ -105,8 +118,33 @@ function io_index.wait_write(t)
 	t.ev.fflags = r.fflags
 	t.ev.data = r.data
 end
+]]
+function io_index.read_yield(t)
+	if t.rpoll == 0 then
+		t.ev.filter = EVFILT_READ
+		t:add_to(t.p)
+		t.rpoll = 1
+	end
+end
+function io_index.write_yield(t)
+	if t.wpoll == 0 then
+		t.ev.filter = EVFILT_WRITE
+		t:add_to(t.p)
+		t.wpoll = 1
+	end
+end
+function io_index.emit_io(t, ev)
+	if ev.filter == EVFILT_WRITE then
+		t.wpoll = 0
+		event.emit_write(t)
+	elseif ev.filter == EVFILT_READ then
+		t.rpoll = 0
+		event.emit_read(t)
+	end
+end
+
 function io_index.add_to(t, poller)
-	assert(bit.band(t.ev.flags, EV_ADD) ~= 0, "invalid event flag")
+	pulpo_assert(bit.band(t.ev.flags, EV_ADD) ~= 0, "invalid event flag")
 	local n = C.kevent(poller.kqfd, t.ev, 1, nil, 0, poller.timeout)
 	-- print(poller.kqfd, n, t.ev.ident, t.ev.filter)
 	if n ~= 0 then
@@ -141,7 +179,7 @@ end
 ---------------------------------------------------
 function poller_index.init(t, maxfd)
 	t.kqfd = C.kqueue()
-	assert(t.kqfd >= 0, "kqueue create fails:"..ffi.errno())
+	pulpo_assert(t.kqfd >= 0, "kqueue create fails:"..ffi.errno())
 	-- print('kqfd:', tonumber(t.kqfd))
 	t.maxfd = maxfd
 	t.nevents = maxfd
@@ -154,19 +192,16 @@ end
 function poller_index.set_timeout(t, sec)
 	util.sec2timespec(sec, t.timeout)
 end
-function poller_index.wait(t)
+function poller_index._wait(t)
 	local n = C.kevent(t.kqfd, nil, 0, t.events, t.nevents, t.timeout)
 	if n <= 0 then
 		-- print('kqueue error:'..ffi.errno())
 		return n
 	end
-	--if n > 0 then
-	--	print('n = ', n)
-	--end
 	for i=0,n-1,1 do
 		local ev = t.events + i
 		local fd = tonumber(ev.ident)
-		local co = assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
+		local co = pulpo_assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
 		local ok, rev = pcall(co, ev)
 		if ok then
 			if rev then
@@ -182,6 +217,18 @@ function poller_index.wait(t)
 		::next::
 	end
 end
+function poller_index.wait(t)
+	local n = C.kevent(t.kqfd, nil, 0, t.events, t.nevents, t.timeout)
+	if n <= 0 then
+		-- print('kqueue error:'..ffi.errno())
+		return n
+	end
+	for i=0,n-1,1 do
+		local ev = t.events + i
+		local io = iolist + ev.ident
+		io:emit_io(ev)
+	end
+end
 
 
 ---------------------------------------------------
@@ -191,11 +238,7 @@ poller_cdecl = function (maxfd)
 	return ([[
 		typedef int pulpo_fd_t;
 		typedef struct kevent pulpo_event_t;
-		typedef struct pulpo_io {
-			pulpo_event_t ev;
-			unsigned char kind, padd[3];
-		} pulpo_io_t;
-		typedef struct poller {
+		typedef struct pulpo_poller {
 			bool alive;
 			pulpo_fd_t kqfd;
 			pulpo_event_t events[%d];
@@ -203,6 +246,11 @@ poller_cdecl = function (maxfd)
 			struct timespec timeout[1];
 			int maxfd;
 		} pulpo_poller_t;
+		typedef struct pulpo_io {
+			pulpo_event_t ev;
+			unsigned char kind, rpoll, wpoll, padd;
+			pulpo_poller_t *p;
+		} pulpo_io_t;
 	]]):format(maxfd)
 end
 
@@ -212,7 +260,7 @@ function _M.initialize(args)
 	--> generate run time cdef
 	ffi.cdef(poller_cdecl(args.poller.maxfd))
 	ffi.metatype('pulpo_poller_t', { __index = util.merge_table(args.poller_index, poller_index) })
-	ffi.metatype('pulpo_io_t', { __index = util.merge_table(args.io_index, io_index) })
+	ffi.metatype('pulpo_io_t', { __index = util.merge_table(args.io_index, io_index), __gc = io_index.fin })
 
 	iolist = args.opts.iolist or memory.alloc_fill_typed('pulpo_io_t', args.poller.maxfd)
 	return iolist

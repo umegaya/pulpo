@@ -34,6 +34,7 @@ function tcp_connect(io)
 	local n = C.connect(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen[0])
 	if n < 0 then
 		local eno = errno.errno()
+		-- print('tcp_connect:', io:fd(), n, eno)
 		if eno == EINPROGRESS then
 			-- print('EINPROGRESS:to:', socket.inet_namebyhost(ctx.addrinfo.addrp))
 			io:wait_write()
@@ -48,8 +49,8 @@ function tcp_connect(io)
 	end
 end
 
-function tcp_server_socket(fd, ctx)
-	return poller.newio(fd, HANDLER_TYPE_TCP, ctx)	
+function tcp_server_socket(p, fd, ctx)
+	return p:newio(fd, HANDLER_TYPE_TCP, ctx)	
 end
 
 
@@ -129,7 +130,7 @@ function tcp_accept(io)
 	end
 	local tmp = ctx
 	ctx = nil
-	return tcp_server_socket(n, tmp)
+	return tcp_server_socket(io.p, n, tmp)
 end
 
 function tcp_gc(io)
@@ -145,14 +146,14 @@ function _M.configure(opts)
 	_M.opts = opts
 end
 
-function _M.connect(addr, opts)
+function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_tcp_context_t')
 	local fd = socket.create_stream(addr, opts, ctx.addrinfo)
 	if not fd then error('fail to create socket:'..errno.errno()) end
-	return poller.newio(fd, HANDLER_TYPE_TCP, ctx)
+	return p:newio(fd, HANDLER_TYPE_TCP, ctx)
 end
 
-function _M.listen(addr, opts)
+function _M.listen(p, addr, opts)
 	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
 	local fd = socket.create_stream(addr, opts, ai)
 	if not fd then error('fail to create socket:'..errno.errno()) end
@@ -169,7 +170,7 @@ function _M.listen(addr, opts)
 		error('fail to listen:listen:'..errno.errno())
 	end
 	logger.info('listen:', fd, addr)
-	return poller.newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
+	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
 end
 
 return _M

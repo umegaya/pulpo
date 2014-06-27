@@ -5,9 +5,13 @@ local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
 local fs = require 'pulpo.fs'
 local signal = require 'pulpo.signal'
+local event = require 'pulpo.event'
 -- ffi.__DEBUG_CDEF__ = true
 local log = require 'pulpo.logger'
 log.initialize()
+if not _G.pulpo_assert then
+	_G.pulpo_assert = assert
+end
 
 local _M = {}
 local iolist = ffi.NULL
@@ -35,14 +39,22 @@ end
 function io_index.nfd(t)
 	return tonumber(t:fd())
 end
+function io_index.id(t)
+	return tonumber(t:fd())
+end	
 function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
 function io_index.close(t)
-	logger.info("fd=%d closed by user", t:nfd())
-	coroutine.yield()
+	logger.info("fd=%d closed by user", t:fd())
+	t:fin()
 end
-
+function io_index.emit(t, type, ...)
+	event.emit(t, type, ...)
+end
+function io_index.ev(t, type)
+	event.ev(t, type)
+end
 function poller_index.add(t, io, co)
 	co = ((type(co) == "function") and coroutine.wrap(co) or co)
 	handlers[tonumber(io:fd())] = co
@@ -63,6 +75,9 @@ function poller_index.remove(t, io)
 	if not io:remove_from(t) then return false end
 	handlers[tonumber(io:fd())] = nil
 	return true
+end
+function poller_index.newio(t, fd, type, ctx)
+	return _M.newio(t, fd, type, ctx)
 end
 function poller_index.loop(t)
 	while t.alive do
@@ -107,7 +122,7 @@ local function common_initialize(opts)
 			"kqueue" or 
 		(ffi.os == "Linux" and 
 			"epoll" or 
-			assert(false, "unsupported arch:"..ffi.os))
+			pulpo_assert(false, "unsupported arch:"..ffi.os))
 	)
 	iolist = require ("pulpo.poller."..poller).initialize({
 		opts = opts,
@@ -147,9 +162,9 @@ function _M.new()
 	return p
 end
 
-function _M.newio(fd, type, ctx)
+function _M.newio(poller, fd, type, ctx)
 	local io = iolist[fd]
-	io:init(fd, type, ctx)
+	io:init(poller, fd, type, ctx)
 	return io
 end
 
