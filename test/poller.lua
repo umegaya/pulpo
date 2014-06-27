@@ -1,7 +1,6 @@
 local thread = require 'pulpo.thread'
 local poller = require 'pulpo.poller'
-local ffi = require 'ffiex'
--- ffi.__DEBUG_CDEF__ = true
+local tentacle = require 'pulpo.tentacle'
 
 local NCLIENTS = 1000
 local NITER = 100
@@ -18,40 +17,41 @@ local tcp = require 'pulpo.socket.tcp'
 local p = poller.new()
 local limit,finish,cfinish = NCLIENTS * NITER,0,0
 
-tcp.listen(p, '0.0.0.0:8008'):by(p, function (s)
+tentacle.new(function ()
+	local s = tcp.listen(p, '0.0.0.0:8008')
 	while true do
 		-- print('accept start:')
-		local fd = s:read()
-		-- print('accept:', fd:fd())
-		fd:by(p, function (s)
+		local _fd = s:read()
+		-- print('accept:', _fd:fd())
+		tentacle(function (fd)
+			-- print('sub tentacle:', fd:fd())
 			local i = 0
 			-- print('read start')
 			local ptr,len = ffi.new('char[256]')
 			while i < NITER do
-				len = s:read(ptr, 256)
+				len = fd:read(ptr, 256)
 				-- print('read end', len)
-				s:write(ptr, len)
+				fd:write(ptr, len)
 				i = i + 1
 				finish = finish + 1
 				if (finish % 5000) == 0 then
 					io.stdout:write("s")
 				end
 			end
-		end)
+		end, _fd)	
 	end
-end)
+end)()
 
 local start = os.clock()
 
 local client_msg = ("hello,luact poll"):rep(16)
-for i=0,NCLIENTS-1,1 do
-	tcp.connect(p, '127.0.0.1:8008'):by(p, function (s)
+for cnt=1,NCLIENTS,1 do
+	tentacle(function ()
+		local s = tcp.connect(p, '127.0.0.1:8008')
 		local ptr,len = ffi.new('char[256]')
 		local i = 0
 		while i < NITER do
-			-- print('write start:', s:fd())
 			s:write(client_msg, #client_msg)
-			-- print('write end:', s:fd())
 			len = s:read(ptr, 256) --> malloc'ed char[?]
 			local msg = ffi.string(ptr,len)
 			pulpo_assert(msg == client_msg, "illegal packet received:"..msg)

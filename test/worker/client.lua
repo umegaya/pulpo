@@ -1,5 +1,6 @@
 local ffi = require 'ffiex'
 local pulpo = require 'pulpo.init'
+local tentacle = pulpo.tentacle
 local gen = require 'pulpo.generics'
 local memory = require 'pulpo.memory'
 local tcp = require 'pulpo.socket.tcp'
@@ -28,7 +29,9 @@ end)
 
 local client_msg = ("hello,luact poll"):rep(16)
 for i=0,concurrency - 1,1 do
-	tcp.connect('127.0.0.1:8008'):by(loop, function (s)
+	tentacle(function ()
+		local s = tcp.connect(loop, '127.0.0.1:8008')
+-- logger.info("start tentacle", s:fd())
 		io.stdout:write("-"); io.stdout:flush()
 		local ptr,len = ffi.new('char[256]')
 		local i = 0
@@ -38,7 +41,7 @@ for i=0,concurrency - 1,1 do
 			-- print('write end:', s:fd())
 			len = s:read(ptr, 256) --> malloc'ed char[?]
 			if len <= 0 then
-				logger.debug('closed', s:fd())
+				logger.info('closed', s:fd())
 				break
 			end
 			local msg = ffi.string(ptr,len)

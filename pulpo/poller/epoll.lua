@@ -81,22 +81,6 @@ function io_index.fin(t)
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
---[[
-function io_index.wait_read(t)
-	t.ev.events = bit.bor(EPOLLIN, EPOLLONESHOT)
-	-- print('wait_read', t:fd(), t.ev.events)
-	local r = coroutine.yield(t)
-	-- print('wait_read returns', t:fd())
-	t.ev.events = r.events
-end
-function io_index.wait_write(t)
-	t.ev.events = bit.bor(EPOLLOUT, EPOLLONESHOT)
-	-- if log then print('wait_write', t:fd()) end
-	local r = coroutine.yield(t)
-	-- if log then print('wait_write returns', t:fd()) end
-	t.ev.events = r.events
-end
-]]
 function io_index.read_yield(t)
 	if t.rpoll == 0 then
 		t.ev.events = bit.bor(EPOLLIN, EPOLLET, t.wpoll ~= 0 and EPOLLOUT or 0)
@@ -178,31 +162,6 @@ function poller_index.fin(t)
 end
 function poller_index.set_timeout(t, sec)
 	t.timeout = sec * 1000 -- msec
-end
-function poller_index._wait(t)
-	local n = C.epoll_wait(t.epfd, t.events, t.nevents, t.timeout)
-	if n <= 0 then
-		-- print('epoll error:'..ffi.errno())
-		return n
-	end
-	for i=0,n-1,1 do
-		local ev = t.events + i
-		local fd = tonumber(ev.data.fd)
-		local co = pulpo_assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
-		local ok, rev = pcall(co, ev)
-		if ok then
-			if rev then
-				if rev:activate(t) then
-					goto next
-				end
-			end
-		else
-			logger.warning('abort by error:', rev)
-		end
-		local io = iolist + fd
-		io:fin()
-		::next::
-	end
 end
 function poller_index.wait(t)
 	local n = C.epoll_wait(t.epfd, t.events, t.nevents, t.timeout)

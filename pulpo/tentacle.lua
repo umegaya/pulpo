@@ -1,3 +1,6 @@
+-- tentacle is not special concept of pulpo.
+-- its just coroutine, but name is really suitable for me because of lib name.
+-- you disappointed? XD
 local _M = {}
 local tentacle_mt = {}
 

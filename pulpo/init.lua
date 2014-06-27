@@ -28,10 +28,12 @@ local poller = require 'pulpo.poller'
 local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
 local util = require 'pulpo.util'
+local tentacle = require 'pulpo.tentacle'
 
 _M.thread = thread
 _M.logpfx = "[main]"
 _M.poller = poller
+_M.tentacle = tentacle
 _M.share_memory = thread.share_memory
 
 -- only main thread call this.
@@ -133,7 +135,7 @@ function _M.run(opts, executable)
 				local opaque = pulpo.init_worker()
 				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 				memory.free(opaque.proc)
-				coroutine.wrap(proc)(arg)
+				pulpo.tentacle(proc, arg)
 				pulpo.mainloop:loop()
 			end, 
 			opts.arg or ffi.NULL, 

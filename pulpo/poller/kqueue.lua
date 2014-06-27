@@ -99,26 +99,6 @@ function io_index.fin(t)
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
---[[
-function io_index.wait_read(t)
-	event.wait_read(t)
-	t.ev.filter = EVFILT_READ
-	-- if log then print('wait_read', t:fd()) end
-	local r = coroutine.yield(t)
-	-- if log then print('wait_read returns', t:fd()) end
-	t.ev.fflags = r.fflags
-	t.ev.data = r.data
-end
-function io_index.wait_write(t)
-	event.wait_write(t)
-	t.ev.filter = EVFILT_WRITE
-	-- if log then print('wait_write', t:fd()) end
-	local r = coroutine.yield(t)
-	-- if log then print('wait_write returns', t:fd()) end
-	t.ev.fflags = r.fflags
-	t.ev.data = r.data
-end
-]]
 function io_index.read_yield(t)
 	if t.rpoll == 0 then
 		t.ev.filter = EVFILT_READ
@@ -191,31 +171,6 @@ function poller_index.fin(t)
 end
 function poller_index.set_timeout(t, sec)
 	util.sec2timespec(sec, t.timeout)
-end
-function poller_index._wait(t)
-	local n = C.kevent(t.kqfd, nil, 0, t.events, t.nevents, t.timeout)
-	if n <= 0 then
-		-- print('kqueue error:'..ffi.errno())
-		return n
-	end
-	for i=0,n-1,1 do
-		local ev = t.events + i
-		local fd = tonumber(ev.ident)
-		local co = pulpo_assert(handlers[fd], "handler should exist for fd:"..tostring(fd))
-		local ok, rev = pcall(co, ev)
-		if ok then
-			if rev then
-				if rev:add_to(t) then
-					goto next
-				end
-			end
-		else
-			logger.warning('abort by error:', rev)
-		end
-		local io = iolist + fd
-		io:fin()
-		::next::
-	end
 end
 function poller_index.wait(t)
 	local n = C.kevent(t.kqfd, nil, 0, t.events, t.nevents, t.timeout)
