@@ -58,12 +58,13 @@ struct epoll_event {
     epoll_data_t data;      /* ユーザデータ変数 */
 };
 ]]
-function io_index.init(t, fd, type, ctx)
+function io_index.init(t, poller, fd, type, ctx)
 	pulpo_assert(bit.band(t.ev.events, EPOLLERR) or t.ev.data.fd == 0, 
 		"already used event buffer:"..tonumber(t.ev.data.fd))
 	t.ev.events = bit.bor(EPOLLIN, EPOLLONESHOT)
 	t.ev.data.fd = fd
 	udatalist[tonumber(fd)] = ffi.cast('void *', ctx)
+	t.p = poller
 	t.kind = type
 	t.rpoll = 0
 	t.wpoll = 0
@@ -111,12 +112,11 @@ function io_index.write_yield(t)
 	end
 end
 function io_index.emit_io(t, ev)
+	-- print('emit_io', t:fd())
 	if bit.band(ev.events, EPOLLIN) then
-		t.rpoll = 0
 		event.emit_read(t)
 	end
 	if bit.band(ev.events, EPOLLOUT) then
-		t.wpoll = 0
 		event.emit_write(t)
 	end
 end
@@ -212,7 +212,7 @@ function poller_index.wait(t)
 	end
 	for i=0,n-1,1 do
 		local ev = t.events + i
-		local io = iolist + ev.ident
+		local io = iolist + ev.data.fd
 		io:emit_io(ev)
 	end
 end
