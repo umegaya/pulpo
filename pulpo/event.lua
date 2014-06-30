@@ -101,7 +101,9 @@ function _M.emit(emitter, type, ...)
 	end
 end
 
-function _M.select(ignore_destroy, ...)
+-- you can skip some unnecessary kind of event by filtering with filter
+-- eg) destroy event
+function _M.select(filter, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
 	for i=1,#list,1 do
@@ -109,17 +111,19 @@ function _M.select(ignore_destroy, ...)
 		table.insert(ev.waitq, co)
 		ev.pre_yield(ev.emitter)
 	end
-	local tmp = {coroutine.yield()}
+	local tmp
+	while true do
+		tmp = {coroutine.yield()}
+		if (not filter) or filter(tmp) then
+			break
+		end
+	end
 	for i=1,#list,1 do
 		local ev = list[i]
 		assert(co == ev.waitq[1])
 		table.remove(ev.waitq, 1)
 	end
 	return unpack(tmp)
-end
-function _M.select_ev(ignore_destroy, ...)
-	-- TODO : create select_ev which emit 'done' when one of the events emitted
-	-- or 'close' when some of the event closed first and ignore_close is false.
 end
 
 function _M.wait(...)
@@ -147,10 +151,6 @@ function _M.wait(...)
 		emit = emit + 1
 	end
 	return ret
-end
-function _M.wait_ev(...)
-	-- TODO : create wait_ev which emit 'done' when all of the events emitted	
-	-- or 'timeout' when timed out
 end
 
 -------------------------------------------------------------------------

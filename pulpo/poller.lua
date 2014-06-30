@@ -46,7 +46,7 @@ function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
 function io_index.close(t)
-	logger.info("fd=%d closed by user", t:fd())
+	logger.info("fd=", t:fd(), " closed by user")
 	t:fin()
 end
 io_index.emit = event.emit

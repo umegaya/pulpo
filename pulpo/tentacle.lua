@@ -32,4 +32,21 @@ function _M.new(body)
 	}, tentacle_mt)
 end
 
+-- additional primitive for event module
+function event.select_event(filter, ...)
+	local ev = event.new()
+	_M(function (f, ...)
+		ev:emit('done', event.select(f, ...))
+	end, filter, ...)
+	return ev
+end
+
+function event.wait_event(...)
+	local ev = event.new()
+	_M(function (...)
+		ev:emit('done', event.wait(...))
+	end, ...)
+	return ev
+end
+
 return setmetatable(_M, metatable)
