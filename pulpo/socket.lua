@@ -9,7 +9,7 @@ local _M = {}
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
-	"fcntl", 
+	"fcntl", "dup", 
 	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
 if ffi.os == "Linux" then
@@ -17,7 +17,7 @@ if ffi.os == "Linux" then
 	table.insert(CDECLS, "enum __socket_type")
 end
 local ffi_state = loader.load("socket.lua", CDECLS, {
-	"AF_INET", "AF_INET6", 
+	"AF_INET", "AF_INET6", "AF_UNIX", 
 	"SOCK_STREAM", 
 	"SOCK_DGRAM", 
 	"SOL_SOCKET", 
@@ -69,8 +69,8 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 
 -- TODO : current 'inet_namebyhost' implementation assumes binary layout of sockaddr_in and sockaddr_in6, 
 -- is the same at first 4 byte (sa_family and sin_port) 
-assert(ffi.offsetof('struct sockaddr_in', 'sin_family') == ffi.offsetof('struct sockaddr_in6', 'sin6_family'))
-assert(ffi.offsetof('struct sockaddr_in', 'sin_port') == ffi.offsetof('struct sockaddr_in6', 'sin6_port'))
+pulpo_assert(ffi.offsetof('struct sockaddr_in', 'sin_family') == ffi.offsetof('struct sockaddr_in6', 'sin6_family'))
+pulpo_assert(ffi.offsetof('struct sockaddr_in', 'sin_port') == ffi.offsetof('struct sockaddr_in6', 'sin6_port'))
 
 local SOCK_STREAM, SOCK_DGRAM
 if ffi.os == "OSX" then
@@ -88,6 +88,7 @@ local SO_RCVTIMEO = ffi_state.defs.SO_RCVTIMEO
 local SO_SNDBUF = ffi_state.defs.SO_SNDBUF
 local SO_RCVBUF = ffi_state.defs.SO_RCVBUF
 local AF_INET = ffi_state.defs.AF_INET
+local AF_UNIX = ffi_state.defs.AF_UNIX
 
 local F_SETFL = ffi_state.defs.F_SETFL
 local F_GETFL = ffi_state.defs.F_GETFL
@@ -104,7 +105,7 @@ if ffi.os == "OSX" then
 	}, nil, [[
 		#include <sys/types.h>
 	]])
-	assert(ffi_state.defs.__DARWIN_BYTE_ORDER ~= ffi_state.defs.__DARWIN_PDP_ENDIAN, "unsupported endian: PDP")
+	pulpo_assert(ffi_state.defs.__DARWIN_BYTE_ORDER ~= ffi_state.defs.__DARWIN_PDP_ENDIAN, "unsupported endian: PDP")
 	LITTLE_ENDIAN = (ffi_state.defs.__DARWIN_BYTE_ORDER == ffi_state.defs.__DARWIN_LITTLE_ENDIAN)
 elseif ffi.os == "Linux" then
 	ffi_state = loader.load("endian.lua", {}, {
@@ -112,7 +113,7 @@ elseif ffi.os == "Linux" then
 	}, nil, [[
 		#include <endian.h>
 	]])
-	assert(ffi_state.defs.__BYTE_ORDER ~= ffi_state.defs.__PDP_ENDIAN, "unsupported endian: PDP")
+	pulpo_assert(ffi_state.defs.__BYTE_ORDER ~= ffi_state.defs.__PDP_ENDIAN, "unsupported endian: PDP")
 	LITTLE_ENDIAN = (ffi_state.defs.__BYTE_ORDER == ffi_state.defs.__LITTLE_ENDIAN)
 end
 
@@ -401,6 +402,19 @@ end
 
 function _M.create_mcast(addr, opts, addrinfo)
 	-- TODO : create multicast
+end
+
+function _M.create_unix_domain()
+	local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
+	if fd < 0 then
+		logger.error('fail to create socket:', ffi.errno())
+		return nil
+	end
+	return fd	
+end
+
+function _M.dup(sock)
+	return C.dup(sock)
 end
 
 return _M

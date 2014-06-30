@@ -59,20 +59,20 @@ struct epoll_event {
 };
 ]]
 function io_index.init(t, poller, fd, type, ctx)
-	pulpo_assert(bit.band(t.ev.events, EPOLLERR) or t.ev.data.fd == 0, 
+	pulpo_assert(t.ev.events == 0 or t.ev.data.fd == 0, 
 		"already used event buffer:"..tonumber(t.ev.data.fd))
-	t.ev.events = bit.bor(EPOLLIN, EPOLLONESHOT)
+	t.ev.events = 0
 	t.ev.data.fd = fd
 	udatalist[tonumber(fd)] = ffi.cast('void *', ctx)
 	t.p = poller
 	t.kind = type
 	t.rpoll = 0
 	t.wpoll = 0
-	event.create_read(t)
-	event.create_write(t)
+	event.add_read_to(t)
+	event.add_write_to(t)
 end
 function io_index.fin(t)
-	t.ev.events = EPOLLERR
+	t.ev.events = 0
 	-- if we does not use dup(), no need to remove fd from epoll fd.
 	-- so in pulpo, I don't use dup.
 	-- if 3rdparty lib use dup(), please do it in gc_handler XD
@@ -81,6 +81,7 @@ function io_index.fin(t)
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
+io_index.wait_timer = event.wait_read
 function io_index.read_yield(t)
 	if t.rpoll == 0 then
 		t.ev.events = bit.bor(EPOLLIN, EPOLLET, t.wpoll ~= 0 and EPOLLOUT or 0)
@@ -126,12 +127,11 @@ function io_index.activate(t, poller)
 	return true
 end
 function io_index.remove_from_poller(t)
-	local n = C.epoll_ctl(t.poller.epfd, EPOLL_CTL_DEL, t:fd(), t.ev)
+	local n = C.epoll_ctl(t.p.epfd, EPOLL_CTL_DEL, t:fd(), t.ev)
 	if n ~= 0 then
 		logger.error('epoll event remove error:'..ffi.errno().."\n"..debug.traceback())
 		return false
 	end
-	gc_handlers[t:type()](t)
 end
 function io_index.fd(t)
 	return t.ev.data.fd

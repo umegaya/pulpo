@@ -39,7 +39,7 @@ end
 function io_index.nfd(t)
 	return tonumber(t:fd())
 end
-function io_index.id(t)
+function io_index.__emid(t)
 	return tonumber(t:fd())
 end	
 function io_index.by(t, poller, cb)
@@ -49,33 +49,10 @@ function io_index.close(t)
 	logger.info("fd=%d closed by user", t:fd())
 	t:fin()
 end
-function io_index.emit(t, type, ...)
-	event.emit(t, type, ...)
-end
-function io_index.ev(t, type)
-	event.ev(t, type)
-end
-function poller_index.add(t, io, co)
-	co = ((type(co) == "function") and coroutine.wrap(co) or co)
-	handlers[tonumber(io:fd())] = co
-	local ok, rev = pcall(co, io)
-	if ok then
-		if rev then
-			if rev:add_to(t) then
-				return true
-			end
-		end
-	else
-		logger.warning('abort by error:', rev)
-	end
-	io:fin()
-	return true
-end
-function poller_index.remove(t, io)
-	if not io:remove_from(t) then return false end
-	handlers[tonumber(io:fd())] = nil
-	return true
-end
+io_index.emit = event.emit
+io_index.event = event.get
+
+
 function poller_index.newio(t, fd, type, ctx)
 	return _M.newio(t, fd, type, ctx)
 end

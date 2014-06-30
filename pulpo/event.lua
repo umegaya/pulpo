@@ -3,7 +3,8 @@
 おおむね以下のような気分で操作できることを目指す.
 
 -- wait one of the following events
-local type,object = event.wait_one(io:ev('read'), io2:ev('read'), io2:ev('shutdown'), timer.timeout(1000))
+local ignore_close = false
+local type,object = event.select(ignore_close, io:ev('read'), io2:ev('read'), io2:ev('shutdown'), timer.timeout(1000))
 if type == 'read' then
 	if object == io then
 		...
@@ -19,7 +20,7 @@ elseif recv == 'timeout' then
 end
 
 -- wait all of following events
-local type_object_tuples = event.wait_all(1000, io:ev('read'), io2:ev('read'), io3:ev('read'))
+local type_object_tuples = event.wait(1000, io:ev('read'), io2:ev('read'), io3:ev('read'))
 for _,tuple in ipairs(type_object_tuples) do
 	print(tuple[1], tuple[2])
 end
@@ -35,8 +36,16 @@ local _M = {}
 local eventlist = {}
 local readlist, writelist = {}, {}
 
-function _M.create(emitter, type, py)
-	local id = emitter:id()
+local ev_index = {}
+local ev_mt = { __index = ev_index }
+function ev_index.emit(t, type, ...)
+	for _,co in ipairs(t.waitq) do
+		coroutine.resume(co, type, t, ...)
+	end
+end
+
+function _M.add_to(emitter, type, py)
+	local id = emitter:__emid()
 	local evlist = eventlist[id]
 	if not evlist then
 		evlist = {}
@@ -52,40 +61,47 @@ function _M.create(emitter, type, py)
 		evlist[type] = ev
 	else
 		ev.emitter = emitter
-		assert(#ev.waitq == 0)
 	end
+	assert(#ev.waitq == 0)
 	return ev
 end
 
-function _M.ev(emitter, type)
-	local id = emitter:id()
+-- py : callable. do something before wait this event.
+function _M.new(py)
+	return setmetatable({
+		waitq = {},
+		pre_yield = (py or function () end),
+	}, ev_mt)
+end
+
+function _M.get(emitter, type)
+	local id = emitter:__emid()
 	return eventlist[id][type]
 end
 
 function _M.destroy(emitter)
-	local id = emitter:id()
+	local id = emitter:__emid()
 	local evlist = eventlist[id]
 	for type,ev in pairs(evlist) do
-		_M.emit_close(emitter, ev)
+		_M.emit_destroy(emitter, ev)
 	end
 end
 
-function _M.emit_close(emitter, ev)
+function _M.emit_destroy(emitter, ev)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'close', emitter)
+		coroutine.resume(co, 'destroy', emitter)
 	end
 end	
 
 function _M.emit(emitter, type, ...)
-	local id = emitter:id()
+	local id = emitter:__emid()
 	local ev = pulpo_assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, type, emitter, ...)
 	end
 end
 
--- TODO : add timeout? (but this is wait_one, so just add timer event in args...)
-function _M.wait_one(...)
+function _M.select(ignore_destroy, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
 	for i=1,#list,1 do
@@ -101,9 +117,12 @@ function _M.wait_one(...)
 	end
 	return unpack(tmp)
 end
+function _M.select_ev(ignore_destroy, ...)
+	-- TODO : create select_ev which emit 'done' when one of the events emitted
+	-- or 'close' when some of the event closed first and ignore_close is false.
+end
 
--- TODO : add timeout
-function _M.wait_all(timeout, ...)
+function _M.wait(...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
 	for i=1,#list,1 do
@@ -116,6 +135,7 @@ function _M.wait_all(timeout, ...)
 	while emit < required do
 		local tmp = {coroutine.yield()}
 		local object = tmp[2]
+		-- print('wait', tmp[1], object)
 		table.insert(ret, tmp)
 		for i=1,#list,1 do
 			local ev = list[i]
@@ -128,16 +148,20 @@ function _M.wait_all(timeout, ...)
 	end
 	return ret
 end
+function _M.wait_ev(...)
+	-- TODO : create wait_ev which emit 'done' when all of the events emitted	
+	-- or 'timeout' when timed out
+end
 
 -------------------------------------------------------------------------
 -- for read/write, we prepared optimized version of create/ev/single wait/emit
 -- because these are used so frequent
 -------------------------------------------------------------------------
-function _M.create_read(io)
-	local id = io:id()
+function _M.add_read_to(io)
+	local id = io:__emid()
 	local ev = readlist[id]
 	if not ev then
-		ev = _M.create(io, 'read', io.read_yield)
+		ev = _M.add_to(io, 'read', io.read_yield)
 		readlist[id] = ev
 	else
 		ev.emitter = io
@@ -146,7 +170,7 @@ function _M.create_read(io)
 end
 
 function _M.ev_read(io)
-	return assert(readlist[io:id()], "not initialized")
+	return assert(readlist[io:__emid()], "not initialized")
 end
 
 function _M.wait_read(io)
@@ -154,9 +178,20 @@ function _M.wait_read(io)
 	local ev = _M.ev_read(io)
 	table.insert(ev.waitq, co)
 	io:read_yield()
-	coroutine.yield()
+	local t = coroutine.yield()
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
+	return t
+end
+
+function _M.wait_timer(io)
+	local co = pulpo_assert(coroutine.running(), "main thread")
+	local ev = _M.ev_read(io)
+	table.insert(ev.waitq, co)
+	local t = coroutine.yield()
+	assert(ev.waitq[1] == co)
+	table.remove(ev.waitq, 1)
+	return t
 end
 
 function _M.emit_read(io)
@@ -166,11 +201,11 @@ function _M.emit_read(io)
 	end
 end
 
-function _M.create_write(io)
-	local id = io:id()
+function _M.add_write_to(io)
+	local id = io:__emid()
 	local ev = writelist[id]
 	if not ev then
-		ev = _M.create(io, 'write', io.read_yield)
+		ev = _M.add_to(io, 'write', io.read_yield)
 		writelist[id] = ev
 	else
 		ev.emitter = io
@@ -179,7 +214,7 @@ function _M.create_write(io)
 end
 
 function _M.ev_write(io)
-	return assert(writelist[io:id()], "not initialized")
+	return assert(writelist[io:__emid()], "not initialized")
 end
 
 function _M.wait_write(io)
@@ -188,9 +223,10 @@ function _M.wait_write(io)
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
 	io:write_yield()
-	coroutine.yield()
+	local t = coroutine.yield()
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
+	return t
 end
 
 function _M.emit_write(io)

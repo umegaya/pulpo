@@ -30,11 +30,13 @@ local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
 local util = require 'pulpo.util'
 local tentacle = require 'pulpo.tentacle'
+local event = require 'pulpo.event'
 
 _M.thread = thread
-_M.logpfx = "[main]"
+_M.logpfx = "[main] "
 _M.poller = poller
 _M.tentacle = tentacle
+_M.event = event
 _M.share_memory = thread.share_memory
 
 -- only main thread call this.
@@ -50,6 +52,7 @@ function _M.initialize(opts)
 		_M.init_cdef()
 		_M.initialized = true
 	end
+	return _M
 end
 
 function _M.init_share_memory()
@@ -73,7 +76,7 @@ function _M.init_worker(tls)
 	local opaque = thread.opaque(thread.me(), "pulpo_opaque_t*")
 	opaque.poller = _M.mainloop	
 	_M.tid = opaque.id
-	_M.logpfx = util.sprintf("[%04x]", 8, ffi.new('int', opaque.id))
+	_M.logpfx = util.sprintf("[%04x] ", 8, ffi.new('int', opaque.id))
 	return opaque
 end
 
