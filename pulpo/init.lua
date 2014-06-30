@@ -1,5 +1,6 @@
 local ffi = require 'ffiex'
 local C = ffi.C
+local PT = ffi.load("pthread")
 
 local _M = {}
 local log = require 'pulpo.logger'
@@ -13,8 +14,7 @@ local function init_logger()
 		term.resetcolor()
 		io.stdout:flush()
 	end)
-	_G.original_assert = _G.assert
-	_G.assert = function (cond, msgobj)
+	_G.pulpo_assert = function (cond, msgobj)
 		if not cond then
 			logger.fatal(msgobj)
 			_G.error(msgobj, 0)
@@ -29,10 +29,14 @@ local poller = require 'pulpo.poller'
 local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
 local util = require 'pulpo.util'
+local tentacle = require 'pulpo.tentacle'
+local event = require 'pulpo.event'
 
 _M.thread = thread
-_M.logpfx = "[main]"
+_M.logpfx = "[main] "
 _M.poller = poller
+_M.tentacle = tentacle
+_M.event = event
 _M.share_memory = thread.share_memory
 
 -- only main thread call this.
@@ -48,6 +52,7 @@ function _M.initialize(opts)
 		_M.init_cdef()
 		_M.initialized = true
 	end
+	return _M
 end
 
 function _M.init_share_memory()
@@ -71,7 +76,7 @@ function _M.init_worker(tls)
 	local opaque = thread.opaque(thread.me(), "pulpo_opaque_t*")
 	opaque.poller = _M.mainloop	
 	_M.tid = opaque.id
-	_M.logpfx = util.sprintf("[%04x]", 8, ffi.new('int', opaque.id))
+	_M.logpfx = util.sprintf("[%04x] ", 8, ffi.new('int', opaque.id))
 	return opaque
 end
 
@@ -93,11 +98,11 @@ function create_opaque(fn, group)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	-- generate unique seed
 	local seed = _M.share_memory("__thread_id_seed__")
-	C.pthread_rwlock_wrlock(seed.lock)
+	PT.pthread_rwlock_wrlock(seed.lock)
 		seed.data.cnt = seed.data.cnt + 1
 		if seed.data.cnt > 65000 then seed.data.cnt = 1 end
 		r.id = seed.data.cnt
-	C.pthread_rwlock_unlock(seed.lock)
+	PT.pthread_rwlock_unlock(seed.lock)
 	
 	r.group = memory.strdup(group)
 	local proc = util.encode_proc(fn)
@@ -134,7 +139,7 @@ function _M.run(opts, executable)
 				local opaque = pulpo.init_worker()
 				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 				memory.free(opaque.proc)
-				coroutine.wrap(proc)(arg)
+				pulpo.tentacle(proc, arg)
 				pulpo.mainloop:loop()
 			end, 
 			opts.arg or ffi.NULL, 

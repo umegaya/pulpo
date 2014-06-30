@@ -96,6 +96,7 @@ function _M.initialize(sets, chs, global_name)
 			-- default setting
 			setting("debug", 0, "cyan")
 			setting("info", 1, "white")
+			setting("notice", 1, "green")
 			setting("warn", 2, "yellow")
 			setting("error", 3, "magenta")
 			with_bt("error")

@@ -11,6 +11,9 @@ local shmem = require 'pulpo.shmem'
 local fs = require 'pulpo.fs'
 local log = require 'pulpo.logger'
 log.initialize()
+if not _G.pulpo_assert then
+	_G.pulpo_assert = assert
+end
 
 local _M = {}
 local C = ffi.C
@@ -96,8 +99,8 @@ function _M.init_cdef(cache)
 		__index = {
 			init = function (t)
 				t.size, t.used = tonumber(util.n_cpu()), 0
-				assert(t.size > 0)
-				t.list = assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
+				pulpo_assert(t.size > 0)
+				t.list = pulpo_assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
 					"fail to allocate thread list")
 				PT.pthread_mutex_init(t.mtx, nil)
 				t.shared_memory[0]:init()
@@ -210,7 +213,7 @@ function _M.initialize(opts)
 end
 
 function _M.init_worker(args)
-	assert(args)
+	pulpo_assert(args)
 	-- initialize pthread_mutex_*
 	ffi.cdef(ffi.string(args.initial_cdecl))
 	-- initialize pulpo_shmem_t (depends on pthread_mutex_*)
@@ -225,7 +228,7 @@ function _M.init_worker(args)
 		thread.sleep(0.01)
 		cnt = cnt - 1
 	end
-	assert(cnt > 0, "thread initialization timeout")
+	pulpo_assert(cnt > 0, "thread initialization timeout")
 end
 
 -- finalize. no need to call from worker
@@ -242,7 +245,7 @@ end
 function _M.create(proc, args, opaque, debug)
 	local th = memory.alloc_typed("pulpo_thread_handle_t")
 	local L = C.luaL_newstate()
-	assert(L ~= nil)
+	pulpo_assert(L ~= nil)
 	C.luaL_openlibs(L)
 	local r = C.luaL_loadstring(L, ([[
 	_G.DEBUG = %s
@@ -266,11 +269,11 @@ function _M.create(proc, args, opaque, debug)
 		util.sprintf("%08x", 16, th)
 	))
 	if r ~= 0 then
-		assert(false, "luaL_loadstring:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
+		pulpo_assert(false, "luaL_loadstring:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
 	end
 	r = C.lua_pcall(L, 0, 1, 0)
 	if r ~= 0 then
-		assert(false, "lua_pcall:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
+		pulpo_assert(false, "lua_pcall:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
 	end
 
 	C.lua_getfield(L, LUA_GLOBALSINDEX, "__mainloop__")
@@ -286,7 +289,7 @@ function _M.create(proc, args, opaque, debug)
 	argp.original = args
 	th.L = L
 	th.opaque = opaque
-	assert(PT.pthread_create(t, nil, ffi.cast("pulpo_thread_proc_t", mainloop), argp) == 0)
+	pulpo_assert(PT.pthread_create(t, nil, ffi.cast("pulpo_thread_proc_t", mainloop), argp) == 0)
 	th.pt = t[0]
 	return threads:insert(th) and th or nil
 end
@@ -317,7 +320,7 @@ end
 
 -- set pointer related with specified thread
 function _M.set_opaque(thread, p)
-	assert(_M.equal(_M.me(), thread), "different thread should not change opaque ptr")
+	pulpo_assert(_M.equal(_M.me(), thread), "different thread should not change opaque ptr")
 	thread.opaque = p
 end
 function _M.opaque(thread, ct)
