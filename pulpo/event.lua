@@ -68,10 +68,12 @@ end
 
 -- py : callable. do something before wait this event.
 function _M.new(py)
-	return setmetatable({
+	local r = setmetatable({
 		waitq = {},
 		pre_yield = (py or function () end),
 	}, ev_mt)
+	r.emitter = r
+	return r
 end
 
 function _M.get(emitter, type)
@@ -97,7 +99,7 @@ function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
 	local ev = pulpo_assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, type, emitter, ...)
+		coroutine.resume(co, type, ev, ...)
 	end
 end
 
@@ -106,6 +108,7 @@ end
 function _M.select(filter, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
+	pulpo_assert(#list > 0, "no events to wait:"..#list)
 	for i=1,#list,1 do
 		local ev = list[i]
 		table.insert(ev.waitq, co)
@@ -118,37 +121,89 @@ function _M.select(filter, ...)
 			break
 		end
 	end
+	local rev = tmp[2]
+	tmp[2] = rev.emitter
 	for i=1,#list,1 do
 		local ev = list[i]
-		assert(co == ev.waitq[1])
-		table.remove(ev.waitq, 1)
+		if rev == ev then
+			assert(co == ev.waitq[1])
+			table.remove(ev.waitq, 1)
+		else
+			for j=1,#ev.waitq,1 do
+				local elem = ev.waitq[j]
+				if elem == co then
+					table.remove(ev.waitq, j)
+				end
+			end
+		end
 	end
 	return unpack(tmp)
 end
 
-function _M.wait(...)
+-- wait all event specified in ... 
+-- actually timeout is not necessary to timeout event
+-- if timeout is not falsy, 
+-- wait also wait timeout and if it is emitted, all unemitted events are marked as timeout
+-- if all events except timeout, is emitted, wait no more wait timeout is emitted.
+-- if timeout is falsy (nil or false), wait just waiting any other event permanently.
+-- 
+-- returns array which emitted result in emit order (except result for timeout event object.
+-- it will be placed last of returned array)
+function _M.wait(timeout, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
+	if timeout then
+		table.insert(list, timeout)
+	end
+	pulpo_assert(#list > 0, "no events to wait")
 	for i=1,#list,1 do
 		local ev = list[i]
 		table.insert(ev.waitq, co)
 		ev.pre_yield(ev.emitter)
 	end
 	local ret = {}
-	local emit,required = 0,#list
-	while emit < required do
+	-- -1 for timeout event (its not necessary to emit)
+	local emit,required = 0,timeout and (#list - 1) or #list
+	while true do
 		local tmp = {coroutine.yield()}
-		local object = tmp[2]
-		-- print('wait', tmp[1], object)
-		table.insert(ret, tmp)
-		for i=1,#list,1 do
-			local ev = list[i]
-			if object == ev.emitter then
-				assert(co == ev.waitq[1])
-				table.remove(ev.waitq, 1)
+		local rev = tmp[2]
+		tmp[2] = rev.emitter
+		if timeout and rev == timeout then
+			-- timed out. 
+			for i=1,#list,1 do
+				local ev = list[i]
+				-- all unemitted events are marked as timeout
+				if rev ~= ev then
+					table.insert(ret, {'timeout', ev.emitter})
+				end
+				for j=1,#ev.waitq,1 do
+					local elem = ev.waitq[j]
+					if elem == co then
+						table.remove(ev.waitq, j)
+					end
+				end
+			end
+			table.insert(ret, tmp)
+			return ret
+		else
+			table.insert(ret, tmp)
+			for i=1,#list,1 do
+				local ev = list[i]
+				if rev == ev then
+					table.remove(list, i)
+					assert(co == ev.waitq[1])
+					table.remove(ev.waitq, 1)
+					break
+				end
+			end
+			emit = emit + 1
+			if emit >= required then
+				break
 			end
 		end
-		emit = emit + 1
+	end
+	if timeout then
+		table.insert(ret, {'ontime', timeout.emitter})
 	end
 	return ret
 end
@@ -197,7 +252,7 @@ end
 function _M.emit_read(io)
 	local ev = _M.ev_read(io)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'read', io)
+		coroutine.resume(co, 'read', ev)
 	end
 end
 
@@ -233,7 +288,7 @@ function _M.emit_write(io)
 	-- print('emit_write:', io:fd())
 	local ev = _M.ev_write(io)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'write', io)
+		coroutine.resume(co, 'write', ev)
 	end
 end
 

@@ -41,11 +41,11 @@ function event.select_event(filter, ...)
 	return ev
 end
 
-function event.wait_event(...)
+function event.wait_event(timeout, ...)
 	local ev = event.new()
-	_M(function (...)
-		ev:emit('done', event.wait(...))
-	end, ...)
+	_M(function (t_o, ...)
+		ev:emit('done', event.wait(t_o, ...))
+	end, timeout, ...)
 	return ev
 end
 
