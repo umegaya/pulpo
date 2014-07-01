@@ -92,11 +92,16 @@ function io_index.init(t, poller, fd, type, ctx)
 	event.add_read_to(t)
 	event.add_write_to(t)
 end
+function io_index.initialized(t)
+	return t.ev.flags ~= 0
+end
 function io_index.fin(t)
-	logger.info('io_index.fin:', t:fd())
-	t.ev.flags = 0
-	event.destroy(t)
-	gc_handlers[t:type()](t)
+	if t:initialized() then
+		-- logger.info('io_index.fin:', t:fd())
+		t.ev.flags = 0
+		event.destroy(t)
+		gc_handlers[t:type()](t)
+	end
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
@@ -233,6 +238,10 @@ function _M.initialize(args)
 
 	iolist = args.opts.iolist or memory.alloc_fill_typed('pulpo_io_t', args.poller.maxfd)
 	return iolist
+end
+
+function _M.finalize()
+	memory.free(iolist)
 end
 
 return _M

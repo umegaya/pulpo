@@ -34,7 +34,7 @@ loader.add_lazy_initializer(function ()
 		elseif ffi.os == "Linux" then
 			return si._sifields._sigfault.si_addr
 		else
-			assert(false, "unsupported OS:"..ffi.os)
+			pulpo_assert(false, "unsupported OS:"..ffi.os)
 		end
 	end
 
@@ -62,7 +62,7 @@ function _M.signal(signo, handler)
 	elseif ffi.os == "Linux" then
 		sa[0].__sigaction_handler.sa_sigaction = handler
 	else
-		assert(false, "unsupported OS:"..ffi.os)
+		pulpo_assert(false, "unsupported OS:"..ffi.os)
 	end
 	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART)
 	if C.sigemptyset(sset) ~= 0 then
@@ -78,7 +78,7 @@ end
 return setmetatable(_M, {
 	__index = function (t, k)
 		local v = ffi_state.defs[k]
-		assert(v, "no signal definition:"..k)
+		pulpo_assert(v, "no signal definition:"..k)
 		rawset(t, k, v)
 		return v
 	end

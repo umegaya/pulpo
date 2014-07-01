@@ -81,6 +81,7 @@ function _M.add_handler(reader, writer, gc, err)
 	return handler_id_seed
 end
 
+local poller_module
 local function common_initialize(opts)
 	--> change system limits
 	_M.config = thread.share_memory('__poller__', function ()
@@ -101,7 +102,8 @@ local function common_initialize(opts)
 			"epoll" or 
 			pulpo_assert(false, "unsupported arch:"..ffi.os))
 	)
-	iolist = require ("pulpo.poller."..poller).initialize({
+	poller_module = require ("pulpo.poller."..poller)
+	iolist = poller_module.initialize({
 		opts = opts,
 		handlers = handlers, gc_handlers = gc_handlers, 
 		poller = _M.config, 
@@ -122,14 +124,22 @@ function _M.init_worker()
 end
 
 function _M.finalize()
-	if iolist ~= ffi.NULL then
-		memory.free(iolist)
-	end
 	for _,p in ipairs(_M.pollerlist) do
 		p:fin()
 		memory.free(p)
 	end
+	if iolist ~= ffi.NULL then
+		for i=0,_M.config.maxfd - 1,1 do
+			iolist[i]:fin()
+		end
+		-- iolist itself allocated from poller module.
+		-- so memory management is done in each modules
+		if poller_module then
+			poller_module.finalize()
+		end
+	end
 end
+thread.register_exit_handler(_M.finalize)
 
 _M.pollerlist = {}
 function _M.new()

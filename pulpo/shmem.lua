@@ -30,6 +30,10 @@ function _M.initialize()
 						memory.free(e.name)
 						memory.free(e.type)
 						memory.free(e.cdecl)
+						-- TODO : this will cause memoryleak, because sometimes ptr has related metatype
+						-- and need to call function in metatype to free resources correctly.
+						-- but there is no way to transfer metatype through thread.
+						-- in most case, fin is called at about to finish program itself, so not so much problem now.
 						memory.free(e.ptr)
 					end
 					data:fin() 
@@ -67,7 +71,7 @@ function _M.initialize()
 							memory.strdup(t), ptr, 
 							memory.strdup(ffi.main_ffi_state:src_of(t, true))
 					else
-						assert(false, "no initializer:"..type(init))
+						pulpo_assert(false, "no initializer:"..type(init))
 					end
 					data.used = (data.used + 1)
 					return ffi.cast(ffi.string(e.type).."*", e.ptr)
