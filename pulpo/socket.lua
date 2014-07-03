@@ -9,7 +9,7 @@ local _M = {}
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
-	"fcntl", "dup", 
+	"fcntl", "dup", "read", "write",  
 	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
 if ffi.os == "Linux" then

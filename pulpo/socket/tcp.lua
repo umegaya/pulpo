@@ -58,7 +58,8 @@ end
 local function tcp_read(io, ptr, len)
 ::retry::
 	local n = C.recv(io:fd(), ptr, len, 0)
-	if n < 0 then
+	if n <= 0 then
+		if n == 0 then return nil end
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
 			io:wait_read()

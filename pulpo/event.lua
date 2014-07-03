@@ -97,6 +97,7 @@ end
 
 function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
+	print('emit', id, type)
 	local ev = pulpo_assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, type, ev, ...)
@@ -114,15 +115,20 @@ function _M.select(filter, ...)
 		table.insert(ev.waitq, co)
 		ev.pre_yield(ev.emitter)
 	end
-	local tmp
+	local tmp, rev
 	while true do
 		tmp = {coroutine.yield()}
-		if (not filter) or filter(tmp) then
+		if not filter then break end
+		rev = tmp[2]
+		tmp[2] = rev.emitter
+		if filter(tmp) then
 			break
 		end
 	end
-	local rev = tmp[2]
-	tmp[2] = rev.emitter
+	if not rev then
+		rev = tmp[2]
+		tmp[2] = rev.emitter
+	end
 	for i=1,#list,1 do
 		local ev = list[i]
 		if rev == ev then
@@ -250,6 +256,7 @@ function _M.wait_timer(io)
 end
 
 function _M.emit_read(io)
+	-- print('emit_read', io:fd())
 	local ev = _M.ev_read(io)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, 'read', ev)

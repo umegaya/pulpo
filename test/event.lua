@@ -83,7 +83,7 @@ local tp,obj,ok,ret = event.select(false, ev, pulpo.tentacle(function ()
 	-- event which is not destroy, selected.
 	local type,object = event.select(function (result)
 		cnt = cnt + 1
-		logger.info('input to filter:', result[1], cnt > 1 and "processed" or "ignored")
+		logger.info('input to filter:', result[1], result[2]:fd(), cnt > 1 and "processed" or "ignored")
 		return cnt > 1
 	end, s1:event('read'), s2:event('read'), s3:event('read'))
 	if object == s1 then
