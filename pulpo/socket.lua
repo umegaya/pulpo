@@ -300,7 +300,7 @@ end
 
 local default = memory.alloc_fill_typed('pulpo_sockopt_t')
 function _M.setsockopt(fd, opts)
-	opts = opts or default
+	opts = (opts and opts ~= ffi.NULL) and opts or default
 	if not opts.blocking then
 		local f = C.fcntl(fd, F_GETFL, 0) 
 		if f < 0 then

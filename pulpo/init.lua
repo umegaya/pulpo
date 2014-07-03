@@ -117,8 +117,6 @@ function _M.init_opaque()
 	_M.tid = opaque.id
 	_M.logpfx = util.sprintf("[%04x] ", 8, ffi.new('int', opaque.id))
 
-	-- opaque.rfd,opaque.wfd = pipe.create(_M.mainloop, opaque)
-
 	thread.register_exit_handler(function ()
 		destroy_opaque(opaque)
 	end)
@@ -133,7 +131,6 @@ function _M.init_cdef()
 			char *proc;
 			size_t plen;
 			pulpo_poller_t *poller;
-			pulpo_io_t *rfd, *wfd;
 		} pulpo_opaque_t;
 	]]
 	-- necessary gen cdef
@@ -210,23 +207,12 @@ end
 
 function _M.stop(group_or_id_or_filter)
 	for _,th in ipairs(_M.filter(group_or_id_or_filter)) do
-		local opq = thread.opaque(th, "pulpo_opaque_t*")
-		opq.poller:stop()
+		-- th.L == NULL => main thread
+		if not th:main() then
+			local opq = thread.opaque(th, "pulpo_opaque_t*")
+			opq.poller:stop()
+		end
 	end
-end
-
-local channel_list = {}
-function _M.writer(thread)
-	local opq = ffi.cast('pulpo_opaque_t*', thread.opaque)
-	local c = channel_list[opq.id]
-	if c then return c end
-	c = pipe.create_writer(opq.wfd:fd())
-	channel_list[opq.id] = c
-	return c
-end
-function _M.reader()
-	local opq = thread.opaque(thread.me.opaque, "pulpo_opaque_t*")
-	return opq.rfd
 end
 
 return _M

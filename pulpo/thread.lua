@@ -98,6 +98,11 @@ function _M.init_cdef(cache)
 	}
 
 	--> metatype
+	ffi.metatype("pulpo_thread_handle_t", {
+		__index = {
+			main = function (t) return t.L == ffi.NULL end,
+		}
+	})
 	ffi.metatype("pulpo_thread_manager_t", {
 		__index = {
 			init = function (t)

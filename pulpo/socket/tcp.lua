@@ -111,6 +111,7 @@ local function tcp_accept(io)
 	-- print('tcp_accept:', io:fd())
 	if not ctx then
 		ctx = memory.alloc_typed('pulpo_tcp_context_t')
+		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
 	local n = C.accept(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen)
 	if n < 0 then
@@ -145,7 +146,9 @@ function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_tcp_context_t')
 	local fd = socket.create_stream(addr, opts, ctx.addrinfo)
 	if not fd then error('fail to create socket:'..errno.errno()) end
-	return p:newio(fd, HANDLER_TYPE_TCP, ctx)
+	local io = p:newio(fd, HANDLER_TYPE_TCP, ctx)
+	tcp_connect(io)
+	return io
 end
 
 function _M.listen(p, addr, opts)
