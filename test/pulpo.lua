@@ -12,15 +12,7 @@ pulpo.initialize({
 	cdef_cache_dir = './tmp/cdefs'
 })
 
-ffi.cdef [[
-	typedef struct test_config {
-		int n_iter;
-		int n_client;
-		int n_client_core;
-		int n_server_core;
-		bool finished;
-	} test_config_t;
-]]
+require 'test.worker.config'
 
 local cf = pulpo.share_memory('config', function ()
 	local socket = require 'pulpo.socket'
@@ -36,6 +28,7 @@ end)
 -- server worker
 pulpo.create_thread(function (args)
 	local pulpo = require 'pulpo.init'
+	require 'test.worker.config'
 	-- run server thread group with 2 core (including *this* thread)
 	pulpo.run({
 		group = "server",
@@ -48,6 +41,7 @@ pulpo.thread.sleep(1.0)
 -- client worker
 pulpo.create_thread(function (args)
 	local pulpo = require 'pulpo.init'
+	require 'test.worker.config'
 	-- run client thread group with 2 core (including *this* thread)
 	pulpo.run({
 		group = "client",

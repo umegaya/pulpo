@@ -7,7 +7,7 @@ local C = ffi.C
 
 loader.load('env.lua', {
 	"setenv", "unsetenv"
-}, {}, "ssl", [[
+}, {}, nil, [[
 	#include <stdlib.h>
 ]])
 

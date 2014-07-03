@@ -1,5 +1,7 @@
 local ffi = require 'ffiex'
---ffi.__DEBUG_CDEF__ = true
+-- ffi.__DEBUG_CDEF__ = true
+local loader = require 'pulpo.loader'
+loader.debug = true
 local thread = require 'pulpo.thread'
 local poller = require 'pulpo.poller'
 local tentacle = require 'pulpo.tentacle'
@@ -19,9 +21,9 @@ poller.initialize(opts)
 local env = require 'pulpo.env'
 if ffi.os == "OSX" then
 -- add loader path for openssl lib/header
--- (because I installed openssl by brew )
-ffi.path("/usr/local/Cellar/openssl/1.0.1g/include")
-env.DYLD_LIBRARY_PATH = ((env.DYLD_LIBRARY_PATH or "") .. "/usr/local/Cellar/openssl/1.0.1g/lib")
+-- (in case installed openssl by brew )
+ffi.path("/usr/local/opt/openssl/include")
+env.DYLD_LIBRARY_PATH = ((env.DYLD_LIBRARY_PATH or "") .. "/usr/local/opt/openssl/lib")
 elseif ffi.os == "Linux" then
 end
 

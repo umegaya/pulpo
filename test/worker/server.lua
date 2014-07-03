@@ -3,6 +3,8 @@ local pulpo = require 'pulpo.init'
 local tentacle = pulpo.tentacle
 local tcp = require 'pulpo.socket.tcp'
 
+require 'test.worker.config'
+
 local loop = pulpo.mainloop
 local config = pulpo.share_memory('config')
 local n_accept = 0

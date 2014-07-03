@@ -69,13 +69,14 @@ function _M.init_share_memory()
 			int cnt;
 		} pulpo_thread_idseed_t;
 	]]
-	_M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	_M.id_seed = _M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
 -- others initialized by this.
 function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
+		_M.init_share_memory()
 		_M.mainloop = poller.new()
 		_M.init_cdef()
 		_M.initialized = true
@@ -87,13 +88,11 @@ end
 local function create_opaque(fn, group)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	-- generate unique seed
-	local seed = _M.share_memory("__thread_id_seed__")
-	PT.pthread_rwlock_wrlock(seed.lock)
-		seed.data.cnt = seed.data.cnt + 1
-		if seed.data.cnt > 65000 then seed.data.cnt = 1 end
-		r.id = seed.data.cnt
-	PT.pthread_rwlock_unlock(seed.lock)
-	
+	r.id = _M.id_seed:write(function (data)
+		data.cnt = data.cnt + 1
+		if data.cnt > 65000 then data.cnt = 1 end
+		return data.cnt
+	end)	
 	r.group = memory.strdup(group)
 	if fn then
 		local proc = util.encode_proc(fn)

@@ -8,7 +8,7 @@ function _M.initialize()
 	ffi.cdef[[ 
 		typedef struct pulpo_memblock {
 			char *name;
-			char *type, *cdecl;
+			char *type;
 			void *ptr;
 		} pulpo_memblock_t;
 	]]
@@ -29,11 +29,13 @@ function _M.initialize()
 						e = data.list[i]
 						memory.free(e.name)
 						memory.free(e.type)
-						memory.free(e.cdecl)
-						-- TODO : this will cause memoryleak, because sometimes ptr has related metatype
-						-- and need to call function in metatype to free resources correctly.
-						-- but there is no way to transfer metatype through thread.
-						-- in most case, fin is called at about to finish program itself, so not so much problem now.
+						local typename = ffi.string(e.type)
+						local obj = ffi.cast(typename.."*", e.ptr)
+						local ok, fn = pcall(debug.getmetatable(obj).__index, obj, "fin")
+						if ok then
+							print('fin called for', typename)
+							obj:fin()
+						end
 						memory.free(e.ptr)
 					end
 					data:fin() 
@@ -46,13 +48,6 @@ function _M.initialize()
 					for i=0,data.used-1,1 do
 						e = data.list[i]
 						if ffi.string(e.name) == name then
-							local typename = ffi.string(e.type)
-							if not ffi.main_ffi_state.tree[typename] then
-								-- print('decl of ', typename, 'missing')
-								-- print(e.cdecl, name, "["..ffi.string(e.cdecl).."]")
-								ffi.cdef(ffi.string(e.cdecl))
-							end
-							-- print('returns', name, ffi.string(e.type), e.ptr, e.cdecl)
 							return ffi.cast(ffi.string(e.type).."*", e.ptr)
 						end
 					end
@@ -62,14 +57,10 @@ function _M.initialize()
 					e = data.list[data.used]
 					e.name = memory.strdup(name)
 					if type(init) == "string" then
-						e.type, e.ptr, e.cdecl = 
-							memory.strdup(init), memory.alloc_fill_typed(init), 
-							memory.strdup(ffi.main_ffi_state:src_of(init, true))
+						e.type, e.ptr = memory.strdup(init), memory.alloc_fill_typed(init)
 					elseif type(init) == "function" then
 						local t, ptr = init()
-						e.type, e.ptr, e.cdecl = 
-							memory.strdup(t), ptr, 
-							memory.strdup(ffi.main_ffi_state:src_of(t, true))
+						e.type, e.ptr = memory.strdup(t), ptr
 					else
 						pulpo_assert(false, "no initializer:"..type(init))
 					end

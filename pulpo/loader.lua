@@ -176,14 +176,15 @@ end
 
 local function inject_macros(state, symbols)
 	local macro_decl = {}
+	local already = {}
 	for _,sym in pairs(symbols) do
-		local src = state.defs[sym]
-		if type(src) == "number" then
-			table.insert(macro_decl, "#define "..sym.." (" .. src .. ")\n")
-		elseif type(src) == "string" then
-			table.insert(macro_decl, "#define "..sym..' '.. src .. '\n')
-		elseif type(src) ~= "nil" then
-			pulpo_assert(false, sym..": not supported type:"..type(src))
+		if not already[sym] then
+			local src = state.lcpp_defs[sym]
+			assert(src, "no macro:"..sym)
+			table.insert(macro_decl, "#if !defined("..sym..")\n")
+			table.insert(macro_decl, "#define "..sym.." "..src.."\n")
+			table.insert(macro_decl, "#endif\n")
+			already[sym] = true
 		end
 	end
 	return table.concat(macro_decl)

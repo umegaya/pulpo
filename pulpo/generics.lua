@@ -74,6 +74,34 @@ function _M.erastic_list(type, name)
 	}, name)
 end
 
+-- erastic map
+local erastic_map_name_tag = "elastic_map_of_%s"
+local erastic_map_tmpl = [[
+	typedef struct _%s {
+		pthread_rwlock_t lock[1];
+		struct _%s_elem {
+			char *name;
+			%s data;
+		} *list;
+	} %s;
+]]
+function _M.erastic_map(type, name)
+	return cdef_generics(type, erastic_map_name_tag, erastic_map_impl, {
+		__index = {
+			init = function (t)
+			end,
+			fin = function (t)
+			end,
+			reserve = function (t, space)
+			end,
+			put = function (t, name, init)
+			end,
+			get = function ()
+			end,
+		}
+	})
+end
+
 -- rwlock pointer
 local rwlock_ptr_name_tag = "%s_rwlock_ptr_t"
 local rwlock_ptr_tmpl = [[
