@@ -85,14 +85,15 @@ function _M.init_worker(tls)
 	return _M.init_opaque()
 end
 
-local function create_opaque(fn, group)
+local function create_opaque(fn, group, noloop)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	-- generate unique seed
 	r.id = _M.id_seed:write(function (data)
 		data.cnt = data.cnt + 1
 		if data.cnt > 65000 then data.cnt = 1 end
 		return data.cnt
-	end)	
+	end)
+	r.noloop = (noloop and 1 or 0)
 	r.group = memory.strdup(group)
 	if fn then
 		local proc = util.encode_proc(fn)
@@ -125,7 +126,8 @@ end
 function _M.init_cdef()
 	ffi.cdef[[
 		typedef struct pulpo_opaque {
-			unsigned short id, padd;
+			unsigned short id;
+			unsigned char noloop, padd;
 			char *group;
 			char *proc;
 			size_t plen;
@@ -136,7 +138,7 @@ function _M.init_cdef()
 	gen.rwlock_ptr("int")
 end
 
-function _M.create_thread(fn, group, arg)
+function _M.create_thread(exec, group, arg, noloop)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex'
 		local pulpo = require 'pulpo.init'
@@ -145,8 +147,15 @@ function _M.create_thread(fn, group, arg)
 		local opaque = pulpo.init_worker()
 		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 		memory.free(opaque.proc)
-		proc(arg)
-	end, arg or ffi.NULL, create_opaque(fn, group or "main"))
+		_G.pulpo = pulpo
+		_G.ffi = ffi
+		if opaque.noloop == 0 then
+			pulpo.tentacle(proc, arg)
+			pulpo.mainloop:loop()
+		else
+			proc(arg)
+		end
+	end, arg or ffi.NULL, create_opaque(exec, group or "main", noloop))
 end
 
 function _M.run(opts, executable)
@@ -154,22 +163,8 @@ function _M.run(opts, executable)
 
 	_M.n_core = opts.n_core or util.n_cpu()
 	-- -1 for this thread (also run as worker)
-	for i=0,_M.n_core - 2,1 do
-		thread.create(
-			function (arg)
-				local ffi = require 'ffiex'
-				local pulpo = require 'pulpo.init'
-				local util = require 'pulpo.util'
-				local memory = require 'pulpo.memory'
-				local opaque = pulpo.init_worker()
-				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
-				memory.free(opaque.proc)
-				pulpo.tentacle(proc, arg)
-				pulpo.mainloop:loop()
-			end, 
-			opts.arg or ffi.NULL, 
-			create_opaque(executable, opts.group or "main"), true
-		)
+	for i=1,_M.n_core - 1,1 do
+		_M.create_thread(executable, opts.group, opts.arg)
 	end
 	coroutine.wrap(util.create_proc(executable))(arg)
 	_M.mainloop:loop()

@@ -39,6 +39,7 @@ local readlist, writelist = {}, {}
 local ev_index = {}
 local ev_mt = { __index = ev_index }
 function ev_index.emit(t, type, ...)
+	-- logger.notice('evemit:', t, type, #t.waitq)
 	for _,co in ipairs(t.waitq) do
 		coroutine.resume(co, type, t, ...)
 	end
@@ -67,10 +68,11 @@ function _M.add_to(emitter, type, py)
 end
 
 -- py : callable. do something before wait this event.
-function _M.new(py)
+function _M.new(py, arg)
 	local r = setmetatable({
 		waitq = {},
 		pre_yield = (py or function () end),
+		arg = arg,
 	}, ev_mt)
 	r.emitter = r
 	return r
@@ -97,7 +99,6 @@ end
 
 function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
-	print('emit', id, type)
 	local ev = pulpo_assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, type, ev, ...)
@@ -113,7 +114,7 @@ function _M.select(filter, ...)
 	for i=1,#list,1 do
 		local ev = list[i]
 		table.insert(ev.waitq, co)
-		ev.pre_yield(ev.emitter)
+		ev.pre_yield(ev.emitter, ev.arg)
 	end
 	local tmp, rev
 	while true do
@@ -165,13 +166,15 @@ function _M.wait(timeout, ...)
 	for i=1,#list,1 do
 		local ev = list[i]
 		table.insert(ev.waitq, co)
-		ev.pre_yield(ev.emitter)
+		--logger.notice(ev, "waitq:", #ev.waitq)
+		ev.pre_yield(ev.emitter, ev.arg)
 	end
 	local ret = {}
 	-- -1 for timeout event (its not necessary to emit)
 	local emit,required = 0,timeout and (#list - 1) or #list
 	while true do
 		local tmp = {coroutine.yield()}
+		-- print('wait emit:', unpack(tmp), debug.traceback())
 		local rev = tmp[2]
 		tmp[2] = rev.emitter
 		if timeout and rev == timeout then
@@ -203,6 +206,7 @@ function _M.wait(timeout, ...)
 				end
 			end
 			emit = emit + 1
+			--print('status:', emit, required)
 			if emit >= required then
 				break
 			end

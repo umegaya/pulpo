@@ -174,18 +174,36 @@ function _M.finalize()
 	end
 end
 
+local parse_macro_dependency
+parse_macro_dependency = function (out, already, defs, symbol)
+	if already[symbol] then return end
+	local src = defs[symbol]
+	if not src then 
+		-- print(symbol, "not defined")
+		return 
+	end
+	if type(src) == 'string' then
+		for w in src:gmatch("[%a_]+[%w_]*") do
+			-- print('w in src:', w, src)
+			parse_macro_dependency(out, already, defs, w)
+		end
+	end
+	-- print('insert:', symbol, src)
+	table.insert(out, {symbol, src})
+	already[symbol] = true
+end
 local function inject_macros(state, symbols)
 	local macro_decl = {}
-	local already = {}
+	local defines, already = {}, {}
 	for _,sym in pairs(symbols) do
-		if not already[sym] then
-			local src = state.lcpp_defs[sym]
-			assert(src, "no macro:"..sym)
-			table.insert(macro_decl, "#if !defined("..sym..")\n")
-			table.insert(macro_decl, "#define "..sym.." "..src.."\n")
-			table.insert(macro_decl, "#endif\n")
-			already[sym] = true
-		end
+		parse_macro_dependency(defines, already, state.lcpp_defs, sym)
+	end
+	for i=1,#defines,1 do
+		local _sym,_src = defines[i][1], defines[i][2]
+		table.insert(macro_decl, "#if !defined(".._sym..")\n")
+		table.insert(macro_decl, "#define ".._sym.." ".._src.."\n")
+		table.insert(macro_decl, "#endif\n")
+		already[_sym] = true
 	end
 	return table.concat(macro_decl)
 end

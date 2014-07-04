@@ -8,7 +8,7 @@ local tcp = require 'pulpo.socket.tcp'
 local C = ffi.C
 local PT = ffi.load("pthread")
 
-require 'test.worker.config'
+require 'test.tools.config'
 
 local loop = pulpo.mainloop
 local config = pulpo.share_memory('config')

@@ -5,13 +5,15 @@ local metatable = {}
 local tentacle_mt = {}
 
 local function tentacle_proc(ev, body, ...)
-	if _M.debug then
-		local args = {pcall(body, ...)}
-		logger.notice('tentacle result:', unpack(args))
-		ev:emit('end', unpack(args))
+	local args = {pcall(body, ...)}
+	if args[1] then
+		if _M.debug then
+			logger.notice('tentacle result:', unpack(args))
+		end
 	else
-		ev:emit('end', pcall(body, ...))
+		logger.error('tentacle result:', unpack(args))
 	end
+	ev:emit('end', unpack(args))
 end
 function metatable.__call(t, body, ...)
 	local cof = coroutine.wrap(tentacle_proc)
@@ -26,11 +28,11 @@ function tentacle_mt.__call(t, ...)
 end
 -- late execution
 function _M.new(body)
-	local cof = coroutine.wrap(tentacle_proc)
 	return setmetatable({
-		event.new(), body		
+		event.new(), body
 	}, tentacle_mt)
 end
+
 
 -- additional primitive for event module
 function event.select_event(filter, ...)

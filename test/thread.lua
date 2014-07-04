@@ -93,3 +93,4 @@ end
 
 thread.finalize()
 
+return true

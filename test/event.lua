@@ -68,7 +68,7 @@ end)
 
 logger.info('--------------------------- select with filter test')
 local finished 
-local tp,obj,ok,ret = event.select(false, ev, pulpo.tentacle(function ()
+local tp,obj,ok,ret = event.select(false, pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect(loop, "127.0.0.1:8008"),
 		tcp.connect(loop, "127.0.0.1:8008"),
@@ -268,3 +268,4 @@ end)
 -- start asynchronous execution
 loop:loop()
 
+return true

@@ -1,0 +1,30 @@
+language: lua
+
+env:
+  - LUA="luajit"
+
+compiler:
+  - gcc
+
+before_script:
+  - sudo mkdir -p /usr/local/share/lua/5.1/
+  - sudo chmod -R 777 /usr/local
+
+script: "sudo bash test/tools/travis_install.sh && luajit test.lua"
+
+branches:
+  only:
+    - master
+    - feature/travis_ci
+
+install:
+  - sudo apt-get install luarocks
+  - sudo luarocks install ffiex
+
+notifications:
+  recipients:
+    - iyatomi+pulpo.test@gmail.com
+  email:
+    on_success: change
+    on_failure: always
+

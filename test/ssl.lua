@@ -97,4 +97,5 @@ p:loop()
 logger.info('end', os.clock() - start, 'sec')
 pulpo_assert(limit <= finish and limit <= cfinish, "not all client/server finished but poller terminated")
 poller.finalize()
-logger.info('success')
+
+return true
