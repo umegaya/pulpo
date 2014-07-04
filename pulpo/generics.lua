@@ -25,7 +25,13 @@ local function cdef_generics(type, tag, tmpl, mt, name)
 	local typename, ct = tag:format(type)
 	if not created[typename] then
 		created[typename] = true
-		ffi.cdef(tmpl:format(name or typename, type, name or typename))
+		local decl = tmpl:gsub("%$(%w+)", {
+			tagname = name or typename, 
+			basetype = type, 
+			typename = name or typename,
+		})
+		-- print('decl = '..decl)
+		ffi.cdef(decl)
 		ct = ffi.metatype(typename, mt)
 	else
 		ct = ffi.typeof(typename)
@@ -36,10 +42,10 @@ end
 -- generic erastic list
 local erastic_list_name_tag = "elastic_list_of_%s"
 local erastic_list_tmpl = [[
-	typedef struct _%s {
+	typedef struct _$tagname {
 		int used, size;
-		%s *list;
-	} %s;
+		$basetype *list;
+	} $typename;
 ]]
 function _M.erastic_list(type, name)
 	return cdef_generics(type, erastic_list_name_tag, erastic_list_tmpl, {
@@ -74,13 +80,77 @@ function _M.erastic_list(type, name)
 	}, name)
 end
 
+-- erastic map
+local erastic_map_name_tag = "elastic_map_of_%s"
+local erastic_map_tmpl = [[
+	typedef struct _$tagname {
+		struct _$typename_elem {
+			char *name;
+			$basetype data;
+		} *list;
+		int size, used;
+	} $typename;
+]]
+function _M.erastic_map(type, name)
+	local elemtype = "struct _"..erastic_map_name_tag:format(type).."_elem"
+	return cdef_generics(type, erastic_map_name_tag, erastic_map_tmpl, {
+		__index = {
+			init = function (t, size)
+				t.size = size or 16
+				t.used = 0
+				t.list = memory.alloc_fill_typed(elemtype, t.size)
+			end,
+			fin = function (t)
+				for i=0,t.used-1,1 do
+					local e = t.list[i]
+					memory.free(e.name)
+					local ok, fn = pcall(debug.getmetatable(data).__index, data, "fin")
+					if ok then
+						data:fin()
+					end
+				end
+				memory.free(t.list)
+			end,
+			reserve = function (t, space)
+				if t.size < (t.used + space) then
+					p = memory.realloc_typed(elemtype, t.list, t.size * 2)
+					if p then
+						t.list = p 
+						t.size = t.size * 2
+					else
+						error('fail to reserve space:'..space)
+					end
+				end
+			end,
+			put = function (t, name, init)
+				t:reserve(1) -- at least 1 entry room
+				local e
+				for i=0,t.used-1,1 do
+					e = t.list[i]
+					if ffi.string(e.name) == name then
+						return e.data
+					end
+				end
+				if _G.type(init) ~= "function" then
+					return nil
+				end
+				e = t.list[t.used]
+				e.name = memory.strdup(name)
+				init(e)
+				t.used = (t.used + 1)
+				return e.data
+			end,
+		}
+	})
+end
+
 -- rwlock pointer
 local rwlock_ptr_name_tag = "%s_rwlock_ptr_t"
 local rwlock_ptr_tmpl = [[
-	typedef struct _%s {
+	typedef struct _$tagname {
 		pthread_rwlock_t lock[1];
-		%s data;
-	} %s;
+		$basetype data;
+	} $typename;
 ]]
 function _M.rwlock_ptr(type, name)
 	return cdef_generics(type, rwlock_ptr_name_tag, rwlock_ptr_tmpl, {
@@ -122,10 +192,10 @@ end
 -- mutex pointer
 local mutex_ptr_name_tag = "%s_mutex_ptr_t"
 local mutex_ptr_tmpl = [[
-	typedef struct _%s {
+	typedef struct _$tagname {
 		pthread_mutex_t lock[1];
-		%s data;
-	} %s;
+		$basetype data;
+	} $typename;
 ]]
 function _M.mutex_ptr(type, name)
 	return cdef_generics(type, mutex_ptr_name_tag, mutex_ptr_tmpl, {

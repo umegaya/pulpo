@@ -8,16 +8,12 @@ local tcp = require 'pulpo.socket.tcp'
 local C = ffi.C
 local PT = ffi.load("pthread")
 
+require 'test.tools.config'
+
 local loop = pulpo.mainloop
 local config = pulpo.share_memory('config')
 local concurrency = math.floor(config.n_client / config.n_client_core)
 local finished = pulpo.share_memory('finished', function ()
-	ffi.cdef [[
-		typedef struct exec_state {
-			int cnt;
-			double start_time;
-		} exec_state_t;
-	]]
 	local t = gen.rwlock_ptr('exec_state_t')
 	local p = memory.alloc_typed(t)
 	p:init(function (data) 
@@ -48,11 +44,12 @@ for i=0,concurrency - 1,1 do
 			pulpo_assert(msg == client_msg, "illegal packet received:"..msg)
 			i = i + 1
 		end
-		PT.pthread_rwlock_wrlock(finished.lock)
-		io.stdout:write("+"); io.stdout:flush()
-		finished.data.cnt = finished.data.cnt + 1
-		PT.pthread_rwlock_unlock(finished.lock)
-		if finished.data.cnt >= config.n_client then
+		local cnt = finished:write(function (data)
+			io.stdout:write("+"); io.stdout:flush()
+			data.cnt = data.cnt + 1
+			return data.cnt
+		end)
+		if cnt >= config.n_client then
 			io.stdout:write("\n")
 			logger.info('test takes', os.clock() - finished.data.start_time, 'sec')
 			pulpo.stop()

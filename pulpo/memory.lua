@@ -5,8 +5,8 @@ local C = ffi.C
 -- malloc information list
 local malloc_info_list = setmetatable({}, {
 	__index = function (t, k)
-		local ct = ffi.typeof(k)
-		local v = { t = k.."*", sz = ffi.sizeof(ct) }
+		local ct = (type(k) == "string" and ffi.typeof(k.."*") or ffi.typeof("$ *", k))
+		local v = { t = ct, sz = ffi.sizeof(k) }
 		rawset(t, k, v)
 		return v
 	end

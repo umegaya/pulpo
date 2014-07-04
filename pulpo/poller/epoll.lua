@@ -68,16 +68,22 @@ function io_index.init(t, poller, fd, type, ctx)
 	t.kind = type
 	t.rpoll = 0
 	t.wpoll = 0
+	t.opened = 1
 	event.add_read_to(t)
 	event.add_write_to(t)
 end
+function io_index.initialized(t)
+	return t.opened ~= 0
+end
 function io_index.fin(t)
-	t.ev.events = 0
-	-- if we does not use dup(), no need to remove fd from epoll fd.
-	-- so in pulpo, I don't use dup.
-	-- if 3rdparty lib use dup(), please do it in gc_handler XD
-	-- (just call t:remove_from_poller())
-	gc_handlers[t:type()](t)
+	if t:initialized() then
+		t.opened = 0
+		-- if we does not use dup(), no need to remove fd from epoll fd.
+		-- so in pulpo, I don't use dup.
+		-- if 3rdparty lib use dup(), please do it in gc_handler XD
+		-- (just call t:remove_from_poller())
+		gc_handlers[t:type()](t)
+	end
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
@@ -91,17 +97,19 @@ function io_index.read_yield(t)
 end
 function io_index.write_yield(t)
 	if t.wpoll == 0 then
-		t.ev.events = bit.bor(EPOLLOUT, EPOLLET, t.rpoll ~= 0 and EPOLLIN or 0)
+		-- to detect connection close, we set EPOLLIN 
+		t.ev.events = bit.bor(EPOLLOUT, EPOLLET, EPOLLIN)
 		t:activate(t.p)
 		t.wpoll = 1
+		t.rpoll = 1
 	end
 end
 function io_index.emit_io(t, ev)
-	-- print('emit_io', t:fd())
-	if bit.band(ev.events, EPOLLIN) then
+	-- print('emit_io', t:fd(), ev.events)
+	if bit.band(ev.events, EPOLLIN) ~= 0 then
 		event.emit_read(t)
 	end
-	if bit.band(ev.events, EPOLLOUT) then
+	if bit.band(ev.events, EPOLLOUT) ~= 0 then
 		event.emit_write(t)
 	end
 end
@@ -196,7 +204,7 @@ poller_cdecl = function (maxfd)
 		} pulpo_poller_t;
 		typedef struct pulpo_io {
 			pulpo_event_t ev;
-			unsigned char kind, rpoll, wpoll, padd;
+			unsigned char kind, rpoll, wpoll, opened;
 			pulpo_poller_t *p;
 		} pulpo_io_t;
 	]]):format(maxfd)
@@ -214,6 +222,11 @@ function _M.initialize(args)
 	udatalist = memory.alloc_fill_typed('void *', args.poller.maxfd)
 	iolist = args.opts.iolist or memory.alloc_fill_typed('pulpo_io_t', args.poller.maxfd)
 	return iolist
+end
+
+function _M.finalize()
+	memory.free(iolist)
+	memory.free(udatalist)
 end
 
 return _M

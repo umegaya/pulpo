@@ -31,7 +31,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 		init = function (t, path)
 			t.size = 16
 			t.used = 0
-			t.list = assert(memory.alloc_typed('pulpo_parsed_cache_t', t.size), 
+			t.list = pulpo_assert(memory.alloc_typed('pulpo_parsed_cache_t', t.size), 
 				"fail to allocate loader cache:"..t.size)
 			if path then
 				t.path = memory.strdup(path)
@@ -92,7 +92,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			local root = ffi.string(t.path)
 			for _,kind in ipairs({"cdecl", "macro"}) do
 				local path = root .. "/" .. ffi.string(e.name) .. "." .. kind
-				local f = assert(io.open(path, "w"), "cannot open for write:"..path)
+				local f = pulpo_assert(io.open(path, "w"), "cannot open for write:"..path)
 				-- print('save:'..ffi.string(e[kind]))
 				f:write(ffi.string(e[kind]))
 				f:close()
@@ -137,7 +137,7 @@ function _M.initialize(cache, loader_ffi_state)
 		_M.set_cache_dir(ffi.string(_cache.path))
 	else
 		_master = true
-		_cache = assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
+		_cache = pulpo_assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
 		_cache:init(_M.cache_dir)
 	end
 
@@ -163,7 +163,7 @@ function _M.init_mutex(shm)
 end
 
 function _M.get_cache_ptr()
-	assert(_cache, "cache not initialized")
+	pulpo_assert(_cache, "cache not initialized")
 	return _cache
 end
 
@@ -174,17 +174,36 @@ function _M.finalize()
 	end
 end
 
+local parse_macro_dependency
+parse_macro_dependency = function (out, already, defs, symbol)
+	if already[symbol] then return end
+	local src = defs[symbol]
+	if not src then 
+		-- print(symbol, "not defined")
+		return 
+	end
+	if type(src) == 'string' then
+		for w in src:gmatch("[%a_]+[%w_]*") do
+			-- print('w in src:', w, src)
+			parse_macro_dependency(out, already, defs, w)
+		end
+	end
+	-- print('insert:', symbol, src)
+	table.insert(out, {symbol, src})
+	already[symbol] = true
+end
 local function inject_macros(state, symbols)
 	local macro_decl = {}
+	local defines, already = {}, {}
 	for _,sym in pairs(symbols) do
-		local src = state.defs[sym]
-		if type(src) == "number" then
-			table.insert(macro_decl, "#define "..sym.." (" .. src .. ")\n")
-		elseif type(src) == "string" then
-			table.insert(macro_decl, "#define "..sym..' '.. src .. '\n')
-		elseif type(src) ~= "nil" then
-			assert(false, sym..": not supported type:"..type(src))
-		end
+		parse_macro_dependency(defines, already, state.lcpp_defs, sym)
+	end
+	for i=1,#defines,1 do
+		local _sym,_src = defines[i][1], defines[i][2]
+		table.insert(macro_decl, "#if !defined(".._sym..")\n")
+		table.insert(macro_decl, "#define ".._sym.." ".._src.."\n")
+		table.insert(macro_decl, "#endif\n")
+		already[_sym] = true
 	end
 	return table.concat(macro_decl)
 end
@@ -233,7 +252,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 		tmp_macros = merge_regex(_M.ffi_state.tree, tmp_macros)
 		local _macro = inject_macros(_M.ffi_state, tmp_macros)
 		--> initialize parsed information
-		c = assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
+		c = pulpo_assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
 	else
 		-- print('macro:[['..ffi.string(c.macro)..']]')
 		_M.ffi_state:cdef(ffi.string(c.macro))
@@ -247,7 +266,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 	ffi.native_cdef_with_guard(_M.ffi_state.tree, tmp_cdecls)
 	local clib
 	if lib then
-		clib = assert(ffi.load(lib), "fail to load:" .. lib)
+		clib = pulpo_assert(ffi.load(lib), "fail to load:" .. lib)
 	else
 		clib = ffi.C
 	end
@@ -272,11 +291,11 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 			--print(decl .. " is func")
 		end
 		if not ok then
-			assert(false, name..":declaration of "..decl.." not available")
+			pulpo_assert(false, name..":declaration of "..decl.." not available")
 		end
 	end
 	for _,macro in ipairs(macros) do
-		assert(_M.ffi_state.defs[macro], "definition of "..macro.." not available")
+		pulpo_assert(_M.ffi_state.defs[macro], "definition of "..macro.." not available")
 	end
 	return _M.ffi_state, clib
 end
@@ -303,9 +322,9 @@ function _M.load(name, cdecls, macros, lib, from)
 	if not table.remove(ret, 1) then
 		local err = table.remove(ret, 1)
 		if _M.cache_dir then
-			local util = require 'pulpo.util'
 			logger.error(msg:format(err .. "\n" .. debug.traceback(), caution))
 			if not _M.debug then
+				local util = require 'pulpo.util'
 				util.rmdir(_M.cache_dir)
 			end
 		else

@@ -25,15 +25,15 @@ local t = thread.create(function (targs)
 	]]
 	local a = ffi.cast('int*', targs)
 	logger.info('hello from pulpo:', (a[0] + a[1] + a[2]))
-	assert((a[0] + a[1] + a[2]) == 6, "correctly passed values into new thread")
+	pulpo_assert((a[0] + a[1] + a[2]) == 6, "correctly passed values into new thread")
 	ffi.C.free(targs)
-	local r = ffi.cast('int*', ffi.C.malloc(ffi.sizeof('int[1]')))
+	local r = ffi.cast('int*', ffi.gc(ffi.C.malloc(ffi.sizeof('int[1]')), nil))
 	r[0] = 111
 	return r
 end, args)
 
 local r = ffi.cast('int*', thread.destroy(t))
-assert(r[0] == 111)
+pulpo_assert(r[0] == 111)
 
 
 
@@ -41,7 +41,7 @@ assert(r[0] == 111)
 logger.info('----- test2 -----')
 local threads = {}
 local params = {}
-for i=0,util.n_cpu() - 1,1 do
+for i=1,util.n_cpu(),1 do
 	local a = memory.alloc_typed('int', 1)
 	a[0] = i
 	thread.share_memory('thread_shm'..i, function ()
@@ -54,7 +54,7 @@ for i=0,util.n_cpu() - 1,1 do
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
 		local idx = (ffi.cast('int*', targs))[0]
-		logger.warn('thread:', thread.me(), idx)
+		logger.warn('thread:', thread.me, idx)
 		local ptr = thread.share_memory('thread_shm'..idx)
 		ptr[0] = (idx + 1) * 111
 		while ptr[0] > 0 do
@@ -68,10 +68,11 @@ local finished = {}
 while true do 
 	local success = true
 	thread.fetch(function (thread_list, size)
-		assert(size == util.n_cpu(), "should be same size as created num")
-		for i=0,size-1,1 do
+		pulpo_assert(size == (1 + util.n_cpu()), "should be same size as created num")
+		pulpo_assert(thread_list[0] == thread.me, "idx0 is this thread")
+		for i=1,size-1,1 do
 			if not finished[i] then
-				assert(thread.equal(threads[i+1], thread_list[i]), "thread handle will be same")
+				pulpo_assert(thread.equal(threads[i], thread_list[i]), "thread handle will be same")
 				local pi = thread.share_memory('thread_shm'..i)
 				if pi[0] == i then
 					success = false
@@ -79,7 +80,7 @@ while true do
 				else
 					finished[i] = true
 				end
-				assert(pi[0] == ((i + 1) * 111), "can read shared memory correctly")
+				pulpo_assert(pi[0] == ((i + 1) * 111), "can read shared memory correctly")
 				pi[0] = 0 --> indicate worker thread to stop
 			end
 		end
@@ -90,5 +91,6 @@ while true do
 	thread.sleep(0.1)
 end
 
-thread.fin()
+thread.finalize()
 
+return true

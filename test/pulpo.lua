@@ -12,15 +12,7 @@ pulpo.initialize({
 	cdef_cache_dir = './tmp/cdefs'
 })
 
-ffi.cdef [[
-	typedef struct test_config {
-		int n_iter;
-		int n_client;
-		int n_client_core;
-		int n_server_core;
-		bool finished;
-	} test_config_t;
-]]
+require 'test.tools.config'
 
 local cf = pulpo.share_memory('config', function ()
 	local socket = require 'pulpo.socket'
@@ -36,27 +28,32 @@ end)
 -- server worker
 pulpo.create_thread(function (args)
 	local pulpo = require 'pulpo.init'
-	-- run server thread group with 2 core (including *this* thread)
+	require 'test.tools.config'
+	-- run server thread group with n_server_core (including *this* thread)
 	pulpo.run({
 		group = "server",
 		n_core = pulpo.share_memory('config').n_server_core,
-	}, "./test/worker/server.lua")
-end)
+	}, "./test/tools/server.lua")
+end, nil, nil, true)
 
 pulpo.thread.sleep(1.0)
 
 -- client worker
 pulpo.create_thread(function (args)
 	local pulpo = require 'pulpo.init'
-	-- run client thread group with 2 core (including *this* thread)
+	require 'test.tools.config'
+	-- run client thread group with n_client_core (including *this* thread)
 	pulpo.run({
 		group = "client",
 		n_core = pulpo.share_memory('config').n_client_core,
-	}, "./test/worker/client.lua")
-end)
+	}, "./test/tools/client.lua")
+end, nil, nil, true)
 
 
 while not cf.finished do
 	pulpo.thread.sleep(5)
 	logger.info('finished=', cf.finished)
 end
+
+pulpo.finalize()
+return true

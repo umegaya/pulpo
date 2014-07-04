@@ -25,6 +25,7 @@ ffi.cdef [[
 		void *manager;
 		void *cache;
 		void *shmem;
+		void *handle;
 		char *initial_cdecl;
 		void *original;
 	} pulpo_thread_args_dummy_t;
@@ -69,6 +70,7 @@ function _M.init_cdef(cache)
 
 	ffi.cdef [[
 		typedef void *(*pulpo_thread_proc_t)(void *);
+		typedef void (*pulpo_exit_handler_t)(void);
 		typedef struct pulpo_thread_handle {
 			pthread_t pt;
 			lua_State *L;
@@ -85,6 +87,7 @@ function _M.init_cdef(cache)
 			pulpo_thread_manager_t *manager;
 			pulpo_parsed_info_t *cache;
 			pulpo_shmem_t *shmem;
+			pulpo_thread_handle_t *handle;
 			char *initial_cdecl;
 			void *original;
 		} pulpo_thread_args_t;
@@ -95,6 +98,11 @@ function _M.init_cdef(cache)
 	}
 
 	--> metatype
+	ffi.metatype("pulpo_thread_handle_t", {
+		__index = {
+			main = function (t) return t.L == ffi.NULL end,
+		}
+	})
 	ffi.metatype("pulpo_thread_manager_t", {
 		__index = {
 			init = function (t)
@@ -139,14 +147,18 @@ function _M.init_cdef(cache)
 				PT.pthread_mutex_lock(t.mtx)
 				local found = false
 				for i=0,t.used-1,1 do
-					if (not found) and PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
-						found = true
+					if not found then 
+						if PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
+							found = true
+						end
 					else
 						t.list[i - 1] = t.list[i]
 					end
 				end
-				t.list[t.used - 1] = nil
-				t.used = (t.used - 1)
+				if found then
+					t.list[t.used - 1] = nil
+					t.used = (t.used - 1)
+				end
 				PT.pthread_mutex_unlock(t.mtx)			
 			end,
 			find = function (t, id)
@@ -208,6 +220,11 @@ function _M.initialize(opts)
 	_M.init_cdef()
 	threads = memory.alloc_typed("pulpo_thread_manager_t")
 	threads:init()
+	-- initialize pseudo thread handle of main thread
+	_M.me = memory.alloc_fill_typed("pulpo_thread_handle_t")
+	_M.me.pt = C.pthread_self()
+	threads:insert(_M.me)
+	-- initialize mutex lock for cdef loader
 	loader.init_mutex(ffi.cast("pulpo_shmem_t*", threads.shared_memory))
 	_M.main = true
 end
@@ -222,6 +239,8 @@ function _M.init_worker(args)
 	loader.init_mutex(ffi.cast("pulpo_shmem_t*", args.shmem))
 	_M.init_cdef(ffi.cast("pulpo_parsed_info_t*", args.cache))
 	threads = ffi.cast("pulpo_thread_manager_t*", args.manager)
+	-- initialize current thread handle
+	_M.me = ffi.cast("pulpo_thread_handle_t*", args.handle)
 	-- wait for this thread appears in global thread list
 	local cnt = 100
 	while not threads:find(PT.pthread_self()) and (cnt > 0) do
@@ -231,13 +250,34 @@ function _M.init_worker(args)
 	pulpo_assert(cnt > 0, "thread initialization timeout")
 end
 
--- finalize. no need to call from worker
-function _M.fin()
-	if threads then
+-- global finalize. no need to call from worker
+function _M.finalize()
+	if _M.main and threads then
+		_M.fin_worker()
 		threads:fin()
 		memory.free(threads)
 		loader.finalize()
 	end
+end
+-- release thread local resources. each worker need to call this
+function _M.fin_worker(thread, on_finalize)
+	thread = thread or _M.me
+	local self_finalize = (thread == _M.me)
+	if self_finalize then
+		_M.at_exit()
+	else
+		-- clean up lua state (including manually allocated memory)
+		C.lua_getfield(thread.L, LUA_GLOBALSINDEX, "__at_exit__")
+		local at_exit = ffi.cast("pulpo_exit_handler_t", C.lua_tointeger(thread.L, -1))
+		at_exit()
+		C.lua_close(thread.L)
+	end
+	-- if run time destruction, remove this thread from list
+	if not on_finalize then
+		-- because all thread memory is freed after that
+		threads:remove(thread)
+	end
+	memory.free(thread)
 end
 
 -- create thread. args must be cast-able as void *.
@@ -263,6 +303,7 @@ function _M.create(proc, args, opaque, debug)
 		return ok and r or ffi.NULL
 	end
 	__mainloop__ = tonumber(ffi.cast("intptr_t", ffi.cast("void *(*)(void *)", mainloop)))
+	__at_exit__ = tonumber(ffi.cast("intptr_t", ffi.cast("void (*)(void)", thread.at_exit)))
 	]]):format(
 		debug and "true" or "false", 
 		string.dump(proc), 
@@ -285,6 +326,7 @@ function _M.create(proc, args, opaque, debug)
 	argp.manager = threads
 	argp.cache = loader.get_cache_ptr()
 	argp.shmem = threads.shared_memory
+	argp.handle = th
 	argp.initial_cdecl = threads.initial_cdecl
 	argp.original = args
 	th.L = L
@@ -295,37 +337,40 @@ function _M.create(proc, args, opaque, debug)
 end
 
 -- destroy thread.
-function _M.destroy(thread, on_finalize)
+_M.exit_handler = {}
+function _M.register_exit_handler(fn)
+	table.insert(_M.exit_handler, fn)
+end
+function _M.at_exit()
+	--print('at_exit')
+	--print('at_exit', #_M.exit_handler)
+	for i=#_M.exit_handler,1,-1 do
+		---print('at_exit', i)
+		_M.exit_handler[i]()
+	end
+	-- print('at_exit end')
+end
+function _M.join(thread, on_finalize)
 	local rv = ffi.new("void*[1]")
 	PT.pthread_join(thread.pt, rv)
-	C.lua_close(thread.L)
-	if not on_finalize then
-		threads:remove(thread)
-	end
-	memory.free(thread)
+	_M.fin_worker(thread, on_finalize)
 	return rv[0]
 end
-_M.join = _M.destroy
-
--- get current thread handle
-function _M.me()
-	local pt = PT.pthread_self()
-	return threads:find(pt)
-end
+_M.destroy = _M.join
 
 -- check 2 thread handles (pthread_t) are same 
 function _M.equal(t1, t2)
 	return PT.pthread_equal(t1.pt, t2.pt) ~= 0
 end
 
--- set pointer related with specified thread
-function _M.set_opaque(thread, p)
-	pulpo_assert(_M.equal(_M.me(), thread), "different thread should not change opaque ptr")
-	thread.opaque = p
-end
+-- get/set pointer related with specified thread
 function _M.opaque(thread, ct)
 	local p = thread.opaque
 	return (ct and p ~= ffi.NULL) and ffi.cast(ct, p) or nil
+end
+function _M.set_opaque(thread, p)
+	pulpo_assert(_M.equal(_M.me, thread), "different thread should not change opaque ptr")
+	thread.opaque = p
 end
 
 -- global share memory
@@ -333,7 +378,7 @@ function _M.share_memory(k, v)
 	return threads:share_memory(k, v)
 end
 
--- iterate all current thread
+-- iterate all thread in this process
 function _M.fetch(fn)
 	return threads:fetch(fn)
 end

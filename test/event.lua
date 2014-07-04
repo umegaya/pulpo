@@ -19,7 +19,7 @@ pulpo.tentacle.debug = true
 pulpo.tentacle(function ()
 
 
-logger.info('server tentacle')
+logger.info('--------------------------- server tentacle')
 local n_accept = 0
 local ev = pulpo.tentacle(function ()
 	local s = tcp.listen(loop, "0.0.0.0:8008")
@@ -45,6 +45,14 @@ local ev = pulpo.tentacle(function ()
 				tg:sleep(0.1 * (13 - n_accept))
 			elseif n_accept == 12 then
 				tg:sleep(0.5)
+			elseif n_accept <= 14 then
+				tg:sleep(0.1 * (16 - n_accept))
+			elseif n_accept == 15 then
+				tg:sleep(0.5)
+			elseif n_accept <= 17 then
+				tg:sleep(0.1 * (19 - n_accept))
+			elseif n_accept == 18 then
+				tg:sleep(0.5)
 			else
 				event.wait(tg:alarm(0.5 * n_accept))
 			end
@@ -58,9 +66,9 @@ local ev = pulpo.tentacle(function ()
 	end
 end)
 
-logger.info('client tentacle')
+logger.info('--------------------------- select with filter test')
 local finished 
-local tp,obj,ok,ret = event.select(false, ev, pulpo.tentacle(function ()
+local tp,obj,ok,ret = event.select(false, pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect(loop, "127.0.0.1:8008"),
 		tcp.connect(loop, "127.0.0.1:8008"),
@@ -75,7 +83,7 @@ local tp,obj,ok,ret = event.select(false, ev, pulpo.tentacle(function ()
 	-- event which is not destroy, selected.
 	local type,object = event.select(function (result)
 		cnt = cnt + 1
-		logger.info('input to filter:', result[1], cnt > 1 and "processed" or "ignored")
+		logger.info('input to filter:', result[1], result[2]:fd(), cnt > 1 and "processed" or "ignored")
 		return cnt > 1
 	end, s1:event('read'), s2:event('read'), s3:event('read'))
 	if object == s1 then
@@ -98,6 +106,7 @@ logger.info("wait result", tp,obj,ok,ret)
 assert(tp == "end" and ok == true and ret == "bar", "something wrong with event processing")
 assert(finished, "event.wait should block until above tentacle done")
 
+logger.info('--------------------------- wait test')
 event.wait(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect(loop, "127.0.0.1:8008"),	
@@ -108,7 +117,7 @@ event.wait(pulpo.tentacle(function ()
 	s2:write('s2', 2)
 	s3:write('s3', 2)
 
-	local results = event.wait(s1:event('read'), s2:event('read'), s3:event('read'))
+	local results = event.wait(false, s1:event('read'), s2:event('read'), s3:event('read'))
 	for idx,r in ipairs(results) do
 		local io = r[2]
 		if io == s1 then
@@ -126,6 +135,7 @@ event.wait(pulpo.tentacle(function ()
 	end
 end))
 
+logger.info('--------------------------- wait_event test1')
 event.wait(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect(loop, "127.0.0.1:8008"),	
@@ -137,12 +147,13 @@ event.wait(pulpo.tentacle(function ()
 	s3:write('s3', 2)
 
 	local alarm = tg:alarm(0.4)
-	local type,object = event.select(false, alarm, event.wait_event(s1:event('read'), s2:event('read'), s3:event('read')))
+	local type,object = event.select(false, alarm, event.wait_event(false, s1:event('read'), s2:event('read'), s3:event('read')))
 	print(type, object)
 	assert(type=="read" and alarm == object)
 end))
 
-pulpo.tentacle(function ()
+logger.info('--------------------------- wait_event test2')
+event.wait(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect(loop, "127.0.0.1:8008"),	
 		tcp.connect(loop, "127.0.0.1:8008"),
@@ -152,7 +163,7 @@ pulpo.tentacle(function ()
 	s2:write('s2', 2)
 	s3:write('s3', 2)
 
-	local waitev = event.wait_event(s1:event('read'), s2:event('read'), s3:event('read'))
+	local waitev = event.wait_event(false, s1:event('read'), s2:event('read'), s3:event('read'))
 	local type,object,results = event.select(false, tg:alarm(0.6), waitev)
 	print(type, object)
 	assert(type=="done" and object == waitev)
@@ -171,14 +182,90 @@ pulpo.tentacle(function ()
 			assert(false, "unknown object returned")
 		end
 	end
+end))
 
-	loop:stop()
-end)
+logger.info('--------------------------- timed wait test1')
+event.wait(pulpo.tentacle(function ()
+	local s1, s2, s3 = 
+		tcp.connect(loop, "127.0.0.1:8008"),	
+		tcp.connect(loop, "127.0.0.1:8008"),
+		tcp.connect(loop, "127.0.0.1:8008")
+
+	s1:write('s1', 2)
+	s2:write('s2', 2)
+	s3:write('s3', 2)
+
+	local alarm = tg:alarm(0.4)
+	local results = event.wait(alarm, s1:event('read'), s2:event('read'), s3:event('read'))
+	print('results:', #results)
+	for idx,r in ipairs(results) do
+		local io = r[2]
+		if io == s1 then
+			logger.info(idx, "s1", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 2)
+		elseif io == s2 then
+			logger.info(idx, "s2", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 1)
+		elseif io == s3 then
+			logger.info(idx, "s3", r[1])
+			assert(r[1] == 'timeout')
+			assert(idx == 3)
+		elseif io == alarm then
+			logger.info(idx, "alarm", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 4)
+		else
+			assert(false, "unknown object returned")
+		end
+	end
+end))
+
+logger.info('--------------------------- timed wait test2')
+event.wait(pulpo.tentacle(function ()
+	local s1, s2, s3 = 
+		tcp.connect(loop, "127.0.0.1:8008"),	
+		tcp.connect(loop, "127.0.0.1:8008"),
+		tcp.connect(loop, "127.0.0.1:8008")
+
+	s1:write('s1', 2)
+	s2:write('s2', 2)
+	s3:write('s3', 2)
+
+	local alarm = tg:alarm(0.6)
+	local results = event.wait(alarm, s1:event('read'), s2:event('read'), s3:event('read'))
+	print('results:', #results)
+	for idx,r in ipairs(results) do
+		local io = r[2]
+		if io == s1 then
+			logger.info(idx, "s1", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 2)
+		elseif io == s2 then
+			logger.info(idx, "s2", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 1)
+		elseif io == s3 then
+			logger.info(idx, "s3", r[1])
+			assert(r[1] == 'read')
+			assert(idx == 3)
+		elseif io == alarm then
+			logger.info(idx, "alarm", r[1])
+			assert(r[1] == 'ontime')
+			assert(idx == 4)
+		else
+			assert(false, "unknown object returned")
+		end
+	end
+end))
 
 --- end of main tentacle
+loop:stop()
 end)
 
 
 -- start asynchronous execution
 loop:loop()
 
+return true

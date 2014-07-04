@@ -1,8 +1,14 @@
+local ffi = require 'ffiex'
+-- ffi.__DEBUG_CDEF__ = true
+local loader = require 'pulpo.loader'
+loader.debug = true
 local thread = require 'pulpo.thread'
 local poller = require 'pulpo.poller'
 local tentacle = require 'pulpo.tentacle'
+local event = require 'pulpo.event'
+-- tentacle.debug = true	
 
-local NCLIENTS = 1000
+local NCLIENTS = 250
 local NITER = 100
 local opts = {
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
@@ -12,13 +18,28 @@ local opts = {
 thread.initialize(opts)
 poller.initialize(opts)
 
-local tcp = require 'pulpo.socket.tcp'
+local env = require 'pulpo.env'
+if ffi.os == "OSX" then
+-- add loader path for openssl lib/header
+-- (in case installed openssl by brew )
+ffi.path("/usr/local/opt/openssl/include")
+env.DYLD_LIBRARY_PATH = ((env.DYLD_LIBRARY_PATH or "") .. "/usr/local/opt/openssl/lib")
+elseif ffi.os == "Linux" then
+end
+
+-- then init ssl module
+local ssl = require 'pulpo.socket.ssl'
+ssl.debug = true
+ssl.initialize({
+	pubkey = "./test/certs/public.key",
+	privkey = "./test/certs/private.key",
+})
 
 local p = poller.new()
 local limit,finish,cfinish = NCLIENTS * NITER,0,0
 
 tentacle.new(function ()
-	local s = tcp.listen(p, '0.0.0.0:8008')
+	local s = ssl.listen(p, '0.0.0.0:8008')
 	while true do
 		-- print('accept start:')
 		local _fd = s:read()
@@ -47,11 +68,13 @@ local start = os.clock()
 local client_msg = ("hello,luact poll"):rep(16)
 for cnt=1,NCLIENTS,1 do
 	tentacle(function ()
-		local s = tcp.connect(p, '127.0.0.1:8008')
+		local s = ssl.connect(p, '127.0.0.1:8008')
 		local ptr,len = ffi.new('char[256]')
 		local i = 0
 		while i < NITER do
+		--print('start write:', cnt)
 			s:write(client_msg, #client_msg)
+		--print('end write:', cnt)
 			len = s:read(ptr, 256) --> malloc'ed char[?]
 			local msg = ffi.string(ptr,len)
 			pulpo_assert(msg == client_msg, "illegal packet received:"..msg)
@@ -74,4 +97,5 @@ p:loop()
 logger.info('end', os.clock() - start, 'sec')
 pulpo_assert(limit <= finish and limit <= cfinish, "not all client/server finished but poller terminated")
 poller.finalize()
+
 return true

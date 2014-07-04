@@ -144,7 +144,7 @@ function _M.sleep(sec)
 	end
 end
 
--- get current time
+-- get current time (with usec acurracy)
 function _M.clock()
 	C.gettimeofday(_M.tval, nil)
 	return tonumber(_M.tval[0].tv_sec) + (tonumber(_M.tval[0].tv_usec) / 1000000)

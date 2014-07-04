@@ -11,12 +11,11 @@ function _M.new(p, start, intv, cb, ...)
 	coroutine.wrap(function (_tm, _fn, ...)
 		local function proc(tm, fn, ...)
 			while true do
-				local tp = tm:wait_read()
-				if tp == 'destroy' then
+				local n = tm:read()
+				if not n then
 					logger.info('timer:', io:fd(), 'closed by event:', tp)
 					goto exit
 				end
-				local n = tm:read()
 				for i=1,tonumber(n),1 do
 					if fn(...) == false then
 						logger.info('timer:', io:fd(), 'closed by user')
@@ -95,10 +94,11 @@ local function alarm_proc(em)
 	em:emit('read')
 	return false
 end
+local function alarm_preyield(ev, arg)
+	arg[1]:add(arg[2], arg[2], alarm_proc, ev)
+end
 function taskgrp_index.alarm(t, sec)
-	local ev = event.new()
-	t:add(sec, sec, alarm_proc, ev)
-	return ev
+	return event.new(alarm_preyield, {t, sec})
 end
 function _M.newgroup(p, intv, max_duration)
 	local tg = taskgrp_new(intv, max_duration)

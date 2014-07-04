@@ -9,7 +9,7 @@ local _M = {}
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
-	"fcntl", "dup", 
+	"fcntl", "dup", "read", "write",  
 	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
 if ffi.os == "Linux" then
@@ -300,7 +300,7 @@ end
 
 local default = memory.alloc_fill_typed('pulpo_sockopt_t')
 function _M.setsockopt(fd, opts)
-	opts = opts or default
+	opts = (opts and opts ~= ffi.NULL) and opts or default
 	if not opts.blocking then
 		local f = C.fcntl(fd, F_GETFL, 0) 
 		if f < 0 then

@@ -33,7 +33,7 @@ local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
 
 _M.thread = thread
-_M.logpfx = "[main] "
+_M.logpfx = "[????] "
 _M.poller = poller
 _M.tentacle = tentacle
 _M.event = event
@@ -50,9 +50,17 @@ function _M.initialize(opts)
 		_M.init_share_memory()
 		_M.mainloop = poller.new()
 		_M.init_cdef()
+		_M.init_opaque()
 		_M.initialized = true
 	end
 	return _M
+end
+
+function _M.finalize()
+	if _M.initialized then
+		thread.finalize()
+		_M.initialized = nil
+	end
 end
 
 function _M.init_share_memory()
@@ -61,29 +69,65 @@ function _M.init_share_memory()
 			int cnt;
 		} pulpo_thread_idseed_t;
 	]]
-	_M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	_M.id_seed = _M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
 -- others initialized by this.
 function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
+		_M.init_share_memory()
 		_M.mainloop = poller.new()
 		_M.init_cdef()
 		_M.initialized = true
 	end
 
-	local opaque = thread.opaque(thread.me(), "pulpo_opaque_t*")
+	return _M.init_opaque()
+end
+
+local function create_opaque(fn, group, noloop)
+	local r = memory.alloc_fill_typed('pulpo_opaque_t')
+	-- generate unique seed
+	r.id = _M.id_seed:write(function (data)
+		data.cnt = data.cnt + 1
+		if data.cnt > 65000 then data.cnt = 1 end
+		return data.cnt
+	end)
+	r.noloop = (noloop and 1 or 0)
+	r.group = memory.strdup(group)
+	if fn then
+		local proc = util.encode_proc(fn)
+		r.proc = memory.strdup(proc)
+		r.plen = #proc
+	end
+	return r
+end
+local function destroy_opaque(opq)
+	memory.free(opq.group)
+	memory.free(opq)
+end
+
+function _M.init_opaque()
+	local opaque = thread.opaque(thread.me, "pulpo_opaque_t*")
+	if opaque == ffi.NULL then
+		opaque = create_opaque(nil, "root")
+		thread.set_opaque(thread.me, opaque)
+	end
 	opaque.poller = _M.mainloop	
 	_M.tid = opaque.id
 	_M.logpfx = util.sprintf("[%04x] ", 8, ffi.new('int', opaque.id))
+
+	thread.register_exit_handler(function ()
+		destroy_opaque(opaque)
+	end)
 	return opaque
 end
 
 function _M.init_cdef()
 	ffi.cdef[[
 		typedef struct pulpo_opaque {
-			unsigned short id, padd;
+			unsigned short id;
+			unsigned char noloop, padd;
 			char *group;
 			char *proc;
 			size_t plen;
@@ -94,24 +138,7 @@ function _M.init_cdef()
 	gen.rwlock_ptr("int")
 end
 
-function create_opaque(fn, group)
-	local r = memory.alloc_fill_typed('pulpo_opaque_t')
-	-- generate unique seed
-	local seed = _M.share_memory("__thread_id_seed__")
-	PT.pthread_rwlock_wrlock(seed.lock)
-		seed.data.cnt = seed.data.cnt + 1
-		if seed.data.cnt > 65000 then seed.data.cnt = 1 end
-		r.id = seed.data.cnt
-	PT.pthread_rwlock_unlock(seed.lock)
-	
-	r.group = memory.strdup(group)
-	local proc = util.encode_proc(fn)
-	r.proc = memory.strdup(proc)
-	r.plen = #proc
-	return r
-end
-
-function _M.create_thread(fn, group, arg)
+function _M.create_thread(exec, group, arg, noloop)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex'
 		local pulpo = require 'pulpo.init'
@@ -120,8 +147,15 @@ function _M.create_thread(fn, group, arg)
 		local opaque = pulpo.init_worker()
 		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 		memory.free(opaque.proc)
-		proc(arg)
-	end, arg or ffi.NULL, create_opaque(fn, group or "main"))
+		_G.pulpo = pulpo
+		_G.ffi = ffi
+		if opaque.noloop == 0 then
+			pulpo.tentacle(proc, arg)
+			pulpo.mainloop:loop()
+		else
+			proc(arg)
+		end
+	end, arg or ffi.NULL, create_opaque(exec, group or "main", noloop))
 end
 
 function _M.run(opts, executable)
@@ -129,22 +163,8 @@ function _M.run(opts, executable)
 
 	_M.n_core = opts.n_core or util.n_cpu()
 	-- -1 for this thread (also run as worker)
-	for i=0,_M.n_core - 2,1 do
-		thread.create(
-			function (arg)
-				local ffi = require 'ffiex'
-				local pulpo = require 'pulpo.init'
-				local util = require 'pulpo.util'
-				local memory = require 'pulpo.memory'
-				local opaque = pulpo.init_worker()
-				local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
-				memory.free(opaque.proc)
-				pulpo.tentacle(proc, arg)
-				pulpo.mainloop:loop()
-			end, 
-			opts.arg or ffi.NULL, 
-			create_opaque(executable, opts.group or "main"), true
-		)
+	for i=1,_M.n_core - 1,1 do
+		_M.create_thread(executable, opts.group, opts.arg)
 	end
 	coroutine.wrap(util.create_proc(executable))(arg)
 	_M.mainloop:loop()
@@ -181,8 +201,11 @@ end
 
 function _M.stop(group_or_id_or_filter)
 	for _,th in ipairs(_M.filter(group_or_id_or_filter)) do
-		local opq = thread.opaque(th, "pulpo_opaque_t*")
-		opq.poller:stop()
+		-- th.L == NULL => main thread
+		if not th:main() then
+			local opq = thread.opaque(th, "pulpo_opaque_t*")
+			opq.poller:stop()
+		end
 	end
 end
 
