@@ -177,6 +177,7 @@ end
 local parse_macro_dependency
 parse_macro_dependency = function (out, already, defs, symbol)
 	if already[symbol] then return end
+	already[symbol] = true	
 	local src = defs[symbol]
 	if not src then 
 		-- print(symbol, "not defined")
@@ -190,7 +191,6 @@ parse_macro_dependency = function (out, already, defs, symbol)
 	end
 	-- print('insert:', symbol, src)
 	table.insert(out, {symbol, src})
-	already[symbol] = true
 end
 local function inject_macros(state, symbols)
 	local macro_decl = {}

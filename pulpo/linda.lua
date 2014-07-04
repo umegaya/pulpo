@@ -39,7 +39,7 @@ end
 ffi.metatype('pulpo_linda_t', {
 	__index = {
 		init = function (t)
-			t.channels:touch(function (data)
+			t.channels:init(function (data)	
 				data:init()
 			end)
 		end,

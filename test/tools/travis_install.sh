@@ -5,7 +5,7 @@ LUAJIT_VERSION=master
 if [ "$CHECK" = "" ];
 then 
 pushd tmp
-git clone http://luajit.org/git/luajit-2.0.git --branch $LUAJIT_VERSION
+git clone http://luajit.org/git/luajit-2.0.git
 pushd luajit-2.0
 make && sudo make install
 popd
@@ -28,4 +28,7 @@ sudo ldconfig
 popd
 popd
 fi
-
+git clone https://github.com/umegaya/ffiex.git ~/ffiex
+pushd ~/ffiex
+sudo bash install.sh
+popd
