@@ -4,6 +4,7 @@ if [ "$FROM_DOCKER" = "" ]; then
 else
 	SUDO=
 fi
+## install luajit
 CHECK=`luajit -v`
 LUAJIT_VERSION=master
 if [ "$CHECK" = "" ];
@@ -15,6 +16,8 @@ make && $SUDO make install
 popd
 popd
 fi
+
+# install tcc
 CHECK=`which tcc`
 TCC_VERSION=release_0_9_26
 TCC_LIB=libtcc.so
@@ -32,7 +35,26 @@ $SUDO ldconfig
 popd
 popd
 fi
-git clone https://github.com/umegaya/ffiex.git ~/ffiex
-pushd ~/ffiex
+
+# install luarocks
+CHECK=`luarocks -v`
+LUAROCKS_VERSION=2.1.2
+if [ "$CHECK" = "" ]; then
+pushd tmp
+wget http://luarocks.org/releases/luarocks-$LUAROCKS_VERSION.tar.gz 
+tar zxvf luarocks-$LUAROCKS_VERSION.tar.gz 
+cd luarocks-$LUAROCKS_VERSION
+./configure
+make
+$SUDO make install
+popd
+fi
+
+# install ffiex
+pushd tmp
+git clone https://github.com/umegaya/ffiex.git
+pushd ffiex
 $SUDO bash install.sh
 popd
+popd
+
