@@ -44,9 +44,8 @@ pushd tmp
 wget http://luarocks.org/releases/luarocks-$LUAROCKS_VERSION.tar.gz 
 tar zxvf luarocks-$LUAROCKS_VERSION.tar.gz 
 cd luarocks-$LUAROCKS_VERSION
-./configure
-make
-$SUDO make install
+./configure --with-lua=/usr/local/ --lua-suffix=jit --with-lua-include=/usr/local/include/luajit-2.0/
+make && $SUDO make install
 popd
 fi
 
