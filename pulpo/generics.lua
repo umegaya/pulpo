@@ -156,8 +156,8 @@ function _M.rwlock_ptr(type, name)
 	return cdef_generics(type, rwlock_ptr_name_tag, rwlock_ptr_tmpl, {
 		__index = {
 			init = function (t, ctor)
+				PT.pthread_rwlock_init(t.lock, nil)	
 				if ctor then t:write(ctor) end
-				PT.pthread_rwlock_init(t.lock, nil)
 			end,
 			fin = function (t, fzr)
 				if fzr then t:write(fzr) end
@@ -201,8 +201,8 @@ function _M.mutex_ptr(type, name)
 	return cdef_generics(type, mutex_ptr_name_tag, mutex_ptr_tmpl, {
 		__index = {
 			init = function (t, ctor)
+				PT.pthread_mutex_init(t.lock, nil)	
 				if ctor then t:touch(ctor) end
-				PT.pthread_mutex_init(t.lock, nil)
 			end,
 			fin = function (t, fzr)
 				if fzr then t:touch(fzr) end

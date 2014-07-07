@@ -28,7 +28,6 @@ function _M.initialize()
 					for i=0,data.used-1,1 do
 						e = data.list[i]
 						memory.free(e.name)
-						memory.free(e.type)
 						local typename = ffi.string(e.type)
 						local obj = ffi.cast(typename.."*", e.ptr)
 						local ok, fn = pcall(debug.getmetatable(obj).__index, obj, "fin")
@@ -36,6 +35,7 @@ function _M.initialize()
 							print('fin called for', typename)
 							obj:fin()
 						end
+						memory.free(e.type)	
 						memory.free(e.ptr)
 					end
 					data:fin() 
