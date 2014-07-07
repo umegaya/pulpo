@@ -46,6 +46,7 @@ tar zxvf luarocks-$LUAROCKS_VERSION.tar.gz
 cd luarocks-$LUAROCKS_VERSION
 ./configure --prefix=/usr --with-lua=/usr/local/ --lua-suffix=jit --with-lua-include=/usr/local/include/luajit-2.0/
 make && $SUDO make install
+$SUDO rm -rf /usr/local/share/lua && ln -s /usr/share/lua /usr/local/share/lua
 popd
 fi
 
