@@ -60,7 +60,9 @@ function _M.initialize()
 						e.type, e.ptr = memory.strdup(init), memory.alloc_fill_typed(init)
 					elseif type(init) == "function" then
 						local t, ptr = init()
+						assert(ptr and ptr ~= ffi.NULL)
 						e.type, e.ptr = memory.strdup(t), ptr
+						assert(e.ptr and e.ptr ~= ffi.NULL)
 					else
 						pulpo_assert(false, "no initializer:"..type(init))
 					end

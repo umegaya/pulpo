@@ -157,9 +157,12 @@ end
 function _M.init_mutex(shm)
 	_mutex = shm:find_or_init('cache_lock', function ()
 		local p = memory.alloc_typed('pthread_mutex_t')
+		assert(p ~= ffi.NULL, "p null1")
 		PT.pthread_mutex_init(p, nil)
+		assert(p ~= ffi.NULL, "p null2")
 		return 'pthread_mutex_t', p
 	end)
+	assert(_mutex and (_mutex ~= ffi.NULL), "mutex NULL")
 end
 
 function _M.get_cache_ptr()
