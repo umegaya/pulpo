@@ -18,7 +18,9 @@ ffi.cdef [[
 ]]
 
 local function lock_cache()
+	print('b4ptrs4:')
 	if not _mutex then return end
+	print('ptrs4:', ffi)
 	PT.pthread_mutex_lock(_mutex)
 end
 local function unlock_cache()
@@ -157,12 +159,16 @@ end
 function _M.init_mutex(shm)
 	_mutex = shm:find_or_init('cache_lock', function ()
 		local p = memory.alloc_typed('pthread_mutex_t')
-		assert(p ~= ffi.NULL, "p null1")
-		PT.pthread_mutex_init(p, nil)
-		assert(p ~= ffi.NULL, "p null2")
+		local r = PT.pthread_mutex_init(p, nil)
+		if r ~= 0 then
+			logger.error('mutex_init failure:', r, ffi.errno())
+		else
+			logger.warn('p == ', p)
+		end
 		return 'pthread_mutex_t', p
 	end)
 	assert(_mutex and (_mutex ~= ffi.NULL), "mutex NULL")
+	_G.crush_mutex = _mutex
 end
 
 function _M.get_cache_ptr()
@@ -174,6 +180,10 @@ function _M.finalize()
 	if _master then
 		_cache:fin()
 		memory.free(_cache)
+		if _mutex then
+			PT.pthread_mutex_destroy(_mutex)
+			-- no need to free _mutex by manually because it managed by shmem module.
+		end
 	end
 end
 

@@ -110,7 +110,7 @@ function _M.init_cdef(cache)
 				pulpo_assert(t.size > 0)
 				t.list = pulpo_assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
 					"fail to allocate thread list")
-				PT.pthread_mutex_init(t.mtx, nil)
+				assert(0 == PT.pthread_mutex_init(t.mtx, nil), "mutex_init fail:"..ffi.errno())
 				t.shared_memory[0]:init()
 				t.initial_cdecl = memory.strdup(
 					parser.inject(ffi.main_ffi_state.tree, INITIAL_REQUIRED_CDECL)

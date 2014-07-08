@@ -51,10 +51,11 @@ for i=1,util.n_cpu(),1 do
 	end)
 	local t = thread.create(function (targs)
 		local ffi = require 'ffi'
+		local PT = ffi.load('pthread')
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
 		local idx = (ffi.cast('int*', targs))[0]
-		logger.warn('thread:', thread.me, idx)
+		logger.warn('thread:', thread.me, idx, ffi)
 		local ptr = thread.share_memory('thread_shm'..idx)
 		ptr[0] = (idx + 1) * 111
 		while ptr[0] > 0 do
