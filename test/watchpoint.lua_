@@ -1,0 +1,25 @@
+local ffi = require 'ffiex'
+local thread = require 'pulpo.thread'
+thread.initialize({ cdef_cache_dir = "./tmp/cdefs" })
+
+local wp = require 'pulpo.debug.watchpoint'
+
+local i = ffi.new('int[1]')
+
+wp(i, function (addr)
+	logger.warn('watchpoint', addr, debug.traceback())
+	assert(ffi.cast('void *', i) == ffi.cast('void *', addr))
+end)
+wp.untrap()
+
+print(ffi.C.getpid(), 'watchpoint check:================================')
+
+for c=1,10,1 do
+	print('write', c, 'to', i)
+	i[0] = c
+end
+
+print('finished')
+thread.finalize()
+print('finalized')
+return true

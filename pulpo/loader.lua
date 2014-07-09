@@ -163,7 +163,7 @@ function _M.init_mutex(shm)
 		if r ~= 0 then
 			logger.error('mutex_init failure:', r, ffi.errno())
 		else
-			logger.warn('p == ', p)
+			logger.warn('p == ', p, debug.traceback())
 		end
 		return 'pthread_mutex_t', p
 	end)
@@ -341,7 +341,7 @@ function _M.load(name, cdecls, macros, lib, from)
 				util.rmdir(_M.cache_dir)
 			end
 		else
-			logger.error(msg:format(err .. "\n" .. debug.traceback(), ""))
+			print(msg:format(err .. "\n" .. debug.traceback(), ""))
 		end
 		os.exit(-1)
 	end

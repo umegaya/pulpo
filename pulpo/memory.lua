@@ -101,7 +101,7 @@ end
 
 function _M.free(p)
 	if ffi.cast('void *', _G.crush_mutex) == ffi.cast('void *', p) then
-		logger.error('free crush mutex', p, debug.traceback())
+		logger.error('free crush mutex', p)
 	end
 	C.free(p)
 end
