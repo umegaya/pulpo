@@ -41,7 +41,7 @@ loader.add_lazy_initializer(function ()
 	_M.dumped = false
 	_M.signal("SIGSEGV", function (sno, info, p)
 		if not _M.dumped then
-			logger.fatal("SIGSEGV", faultaddr(info), p, debug.traceback())
+			logger.fatal("SIGSEGV", faultaddr(info), debug.traceback())
 			_M.dumped = true
 			os.exit(-2)
 		end
@@ -53,7 +53,7 @@ function _M.ignore(signo)
 	C.signal(signo, SIG_IGN)
 end
 
-function _M.signal(signo, handler)
+function _M.signal(signo, handler, optional_saflags)
 	signo = (type(signo) == 'number' and signo or _M[signo])
 	local sa = memory.managed_alloc_typed('struct sigaction')
 	local sset = memory.managed_alloc_typed('sigset_t')
@@ -64,7 +64,7 @@ function _M.signal(signo, handler)
 	else
 		pulpo_assert(false, "unsupported OS:"..ffi.os)
 	end
-	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART)
+	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART, optional_saflags or 0)
 	if C.sigemptyset(sset) ~= 0 then
 		return false
 	end

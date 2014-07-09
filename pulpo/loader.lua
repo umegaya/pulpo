@@ -164,6 +164,8 @@ function _M.init_mutex(shm)
 			logger.error('mutex_init failure:', r, ffi.errno())
 		else
 			logger.warn('p == ', p)
+			local wp = require 'pulpo.debug.watchpoint'
+			wp(p)
 		end
 		return 'pthread_mutex_t', p
 	end)
