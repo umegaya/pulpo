@@ -52,6 +52,7 @@ function _M.initialize()
 						end
 					end
 					if not init then
+						print('init is not specified:'..name)
 						error("no attempt to initialize but not found:"..name)
 					end
 					e = data.list[data.used]
