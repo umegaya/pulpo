@@ -6,11 +6,15 @@ else
 fi
 ## install luajit
 CHECK=`luajit -v`
-LUAJIT_VERSION=master
 if [ "$CHECK" = "" ];
 then 
 pushd tmp
+echo "luajit version:[$LUAJIT_VERSION]"
+if [ "$LUAJIT_VERSION" = "" ]; then
 git clone http://luajit.org/git/luajit-2.0.git
+else
+git clone http://luajit.org/git/luajit-2.0.git --branch $LUAJIT_VERSION
+fi
 pushd luajit-2.0
 make && $SUDO make install
 popd

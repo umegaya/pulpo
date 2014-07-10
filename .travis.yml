@@ -1,7 +1,8 @@
 language: lua
 
 env:
-  - LUA="luajit"
+  #- LUAJIT_VERSION="v2.1" LUAJIT_BIN="luajit-2.1.0-alpha"
+  - LUAJIT_VERSION="master" LUAJIT_BIN="luajit"
 
 compiler:
   - gcc
@@ -10,7 +11,7 @@ before_script:
   - sudo mkdir -p /usr/local/share/lua/5.1/
   - sudo chmod -R 777 /usr/local
 
-script: "sudo bash test/tools/travis_install.sh && luajit test.lua"
+script: "sudo LUAJIT_VERSION=$LUAJIT_VERSION bash test/tools/travis_install.sh && $LUAJIT_BIN test.lua"
 
 branches:
   only:

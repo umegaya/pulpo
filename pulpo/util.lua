@@ -8,6 +8,13 @@ local _M = {}
 --> add NULL symbol
 ffi.NULL = ffi.new('void*')
 
+--> hack for getting luajit include file path
+local major = math.floor(jit.version_num / 10000)
+local minor = math.floor((jit.version_num - major * 10000) / 100)
+function _M.luajit_include_path()
+	return '/usr/local/include/luajit-'..major..'.'..minor
+end
+
 --> non-ffi related util
 function _M.n_cpu()
 	local c = 0

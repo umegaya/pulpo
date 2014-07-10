@@ -41,9 +41,6 @@ loader.add_lazy_initializer(function ()
 		del = ffi.defs.SIG_UNBLOCK,
 		set = ffi.defs.SIG_SETMASK
 	}
-	for k,v in pairs(SIGMASK_OP) do
-		print(k, v)
-	end
 
 	local function faultaddr(si)
 		if ffi.os == "OSX" then
@@ -64,17 +61,12 @@ loader.add_lazy_initializer(function ()
 			os.exit(-2)
 		end
 	end)
-	_M.ignore("SIGTRAP")
 	local thread = require 'pulpo.thread'
 	thread.register_exit_handler(function ()
 		for signo, sa in pairs(_M.original_signals) do
-			logger.info('rollback signal', signo, sa[0].__sigaction_handler.sa_handler)
+			logger.info('rollback signal', signo)
 			C.sigaction(signo, sa, nil)
 			memory.free(sa)
-			if signo == _M.SIGTRAP then
-				logger.info('mask:', signo)
-				_M.maskctl("add", signo)
-			end
 		end
 	end)
 end)
@@ -87,9 +79,7 @@ function _M.maskctl(op, ...)
 		local signo = type(sig) == 'number' and sig or _M[sig]
 		assert(signo, "invalid signal definition:"..tostring(sig))
 		C.sigaddset(sigset, signo)
-		print('maskctl:addsig', signo)
 	end
-	print('maskctl', op, SIGMASK_OP[op])
 	assert(0 == PT.pthread_sigmask(SIGMASK_OP[op], sigset, nil), op..":procmask fails:"..ffi.errno())
 end
 
@@ -113,8 +103,6 @@ function _M.ignore(signo)
 	end
 	local sa2 = memory.managed_alloc_typed('struct sigaction')
 	C.sigaction(signo, nil, sa2) 
-	print(ffi, sa2[0].__sigaction_handler.sa_handler)
-	assert(sa2[0].__sigaction_handler.sa_handler == SIG_IGN, "sigaction not set")
 end
 
 function _M.signal(signo, handler, optional_saflags)

@@ -2,6 +2,7 @@ local ffi = require 'ffiex'
 local loader = require 'pulpo.loader'
 local signal = require 'pulpo.signal'
 local util = require 'pulpo.util'
+local thread = require 'pulpo.thread'
 
 local _M = {}
 local C = ffi.C
@@ -11,6 +12,8 @@ if ffi.os ~= "Linux" then
 		__call = function () end,
 	})
 end
+
+local MAX_DR = 4
 
 local ffi_state = loader.load("watchpoint.lua", {
 	"getpid", "ptrace", "waitpid", "fork", 
@@ -36,6 +39,7 @@ local ffi_state = loader.load("watchpoint.lua", {
 		DR7_LEN_1 = 0,
 		DR7_LEN_2 = 1,
 		DR7_LEN_4 = 3,
+		DR7_LEN_8 = 2,
 	};
 
 	typedef union {
@@ -73,10 +77,24 @@ local PTRACE_DETACH = ffi.cast("enum __ptrace_request", "PTRACE_DETACH")
 local DR7_BREAK_ON_EXEC = ffi.cast('enum dr7_break_type', "DR7_BREAK_ON_EXEC")
 local DR7_BREAK_ON_WRITE = ffi.cast('enum dr7_break_type', "DR7_BREAK_ON_WRITE")
 local DR7_BREAK_ON_RW = ffi.cast('enum dr7_break_type', "DR7_BREAK_ON_RW")
-
+local DR7_BREAK = {
+	exec = DR7_BREAK_ON_EXEC,
+	write = DR7_BREAK_ON_WRITE,
+	rw = DR7_BREAK_ON_RW,
+}
 local DR7_LEN_1 = ffi.cast('enum dr7_len', "DR7_LEN_1")
 local DR7_LEN_2 = ffi.cast('enum dr7_len', "DR7_LEN_2")
 local DR7_LEN_4 = ffi.cast('enum dr7_len', "DR7_LEN_4")
+local DR7_LEN_8 = ffi.cast('enum dr7_len', "DR7_LEN_8")
+local DR7_LEN = {
+	[1] = DR7_LEN_1,
+	[2] = DR7_LEN_2,
+	[4] = DR7_LEN_4,	
+	[8] = DR7_LEN_8,
+}
+
+-- current debugging register state
+_M.dr7 = ffi.new('dr7_t')
 
 local function default_handler(addr)
 	logger.fatal("watchpoint", addr, 'newvalue:'..tostring((ffi.cast('int*', addr)[0])))
@@ -91,75 +109,103 @@ local function get_handler(handler, addr)
 	end
 end
 
-function _M.trap(target_pid, addr)
+function _M.regctl(target_pid, regstate, addr, idx)
+	local dr7 = ffi.new('dr7_t')
+	dr7.data = tonumber(regstate)
+
 	local u = ffi.new('struct user')
-	local dr7 = ffi.new('dr7_t');
-	local addrofs = ffi.new('int', ffi.offsetof('struct user', 'u_debugreg'))
-	local regofs = ffi.new('int', addrofs + (ffi.sizeof(u.u_debugreg[0]) * 7))
-	dr7.reg.l0 = 1
-	dr7.reg.rw0 = DR7_BREAK_ON_WRITE
-	dr7.reg.len0 = DR7_LEN_4
+	local baseofs = ffi.new('int', ffi.offsetof('struct user', 'u_debugreg'))
+	local regofs = ffi.new('int', baseofs + (ffi.sizeof(u.u_debugreg[0]) * 7))
 
 	if type(target_pid) == 'number' then
 		target_pid = ffi.new('int', target_pid)
 	end
 	if 0 ~= C.ptrace(PTRACE_ATTACH, target_pid, nil, nil) then 
-		logger.error('trap:ptrace1', ffi.errno())
-		goto syserror
+		logger.error('ptrace1', ffi.errno())
+		return false
 	end
 	util.sleep(1.0)
-	if 0 ~= C.ptrace(PTRACE_POKEUSER, target_pid, addrofs, ffi.cast('void*', addr)) then 
-		logger.error('trap:ptrace2', ffi.errno())
-		goto syserror
+	if addr and idx then
+		local addrofs = ffi.new('int', baseofs + (ffi.sizeof(u.u_debugreg[0]) * idx))
+		if 0 ~= C.ptrace(PTRACE_POKEUSER, target_pid, addrofs, ffi.cast('void*', addr)) then 
+			logger.error('ptrace2', ffi.errno())
+			return false
+		end
 	end
 	if 0 ~= C.ptrace(PTRACE_POKEUSER, target_pid, regofs, ffi.cast('void*', dr7.data)) then
-		logger.error('trap:ptrace3', ffi.errno())
-		goto syserror
+		logger.error('ptrace3', ffi.errno())
+		return false
 	end
 	if 0 ~= C.ptrace(PTRACE_DETACH, target_pid, nil, nil) then
-		logger.error('trap:ptrace4', ffi.errno())
-		goto syserror
+		logger.error('ptrace4', ffi.errno())
+		return false
 	end
-	logger.notice('trap success:', tonumber(target_pid), bit.tohex(addr))
-	os.exit(0)
+	logger.notice('trap success:', tonumber(target_pid), addr and bit.tohex(addr) or nil)
+	os.exit(idx)
 ::syserror::
-	logger.warn('trap failure:', tonumber(target_pid), bit.tohex(addr))
+	logger.warn('trap failure:', tonumber(target_pid), addr and bit.tohex(addr) or nil)
 	os.exit(-1)
 end
 
-function _M.untrap(idx)
+local function run_ptrace_process(...)
+	local tmp = {}
+	for _,arg in pairs({...}) do
+		table.insert(tmp, tostring(arg))
+	end
+        local cmd = (
+                'luajit -e "(require \'pulpo.thread\').initialize({ cdef_cache_dir=\'%s\'});'..
+                '(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
+        ):format(
+                loader.cache_dir,
+                C.getpid(), table.concat(tmp, ',')
+        )
+        logger.info('exec', cmd)
+        local r = os.execute(cmd)
+        if r ~= 0 then
+       		error('trap fails:'..r)
+        end
+        return r
 end
 
-return setmetatable(_M, { __call = function(t, addr, handler)
-	local parent = C.getpid()
-	local ok, fn = pcall(get_handler, handler, addr)
-	if not ok then
-		error('trap:get_handler:'..fn)
+function _M.untrap(idx)
+	_M.dr7.reg["l"..idx] = 0
+	return run_ptrace_process(tonumber(ffi.cast('int', _M.dr7.data)))
+end
+
+local thread = require 'pulpo.thread'
+thread.register_exit_handler(function ()
+	local trapped 
+	for i=0,MAX_DR-1,1 do
+		if _M.dr7.reg["l"..i] ~= 0 then
+			trapped = true
+		end
+		_M.dr7.reg["l"..i] = 0
 	end
+	if not trapped then return end
+	return run_ptrace_process(tonumber(ffi.cast('int', _M.dr7.data)))
+end)
+
+return setmetatable(_M, { __call = function(t, addr, len, kind, handler)
+	local ok, fn = pcall(get_handler, handler, addr)
+	assert(ok, 'trap:get_handler:'..tostring(fn))
 	signal.signal("SIGTRAP", fn, ffi.defs.SA_NODEFER)
 
---[[
-	local child = C.fork()
-	if child == 0 then
-		logger.info("child", parent)
-		_M.trap(parent, tonumber(ffi.cast('int', addr)))
-	else
-		logger.info("parent", child)
-		C.waitpid(child, nil, 0)
-		logger.info("parent wait end")
+	local idx 
+	for i=0,MAX_DR-1,1 do
+		if _M.dr7.reg["l"..i] == 0 then
+			idx = i
+			break
+		end
 	end
---]]
--- [[
-	local cmd = ('luajit -e "(require \'pulpo.thread\').initialize({ cdef_cache_dir=\'%s\'});(require \'pulpo.debug.watchpoint\').trap(%d,%d)"'):format(
-		loader.cache_dir, 
-		C.getpid(), tonumber(ffi.cast('int', addr))
+	assert(idx, "no empty register")
+
+	_M.dr7.reg["l"..idx] = 1
+	_M.dr7.reg["rw"..idx] = DR7_BREAK[kind or "write"]
+	_M.dr7.reg["len"..idx] = assert(DR7_LEN[len or 4], "invalid len:"..tostring(len))
+	return run_ptrace_process(
+		tonumber(ffi.cast('int', _M.dr7.data)), 
+		type(addr) == 'number' and addr or tonumber(ffi.cast('int', addr)), 
+		idx
 	)
-	-- logger.info('exec', cmd)
-	local r = os.execute(cmd)
-	if r ~= 0 then
-		error('trap fails')
-	end
-	return r
---]]--
 end })
 

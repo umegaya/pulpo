@@ -9,8 +9,8 @@ thread.initialize({
 	cdef_cache_dir = './tmp/cdefs'
 })
 
-local wp = require 'pulpo.debug.watchpoint'
-wp(_G.crush_mutex)
+--local wp = require 'pulpo.debug.watchpoint'
+--wp(tonumber(ffi.cast('int', _G.crush_mutex)) + 28)
 
 logger.info('----- test1 -----')
 local args = memory.alloc_typed('int', 3)

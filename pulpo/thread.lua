@@ -34,7 +34,7 @@ ffi.cdef [[
 local LUA_GLOBALSINDEX
 
 function _M.init_cdef(cache)
-	ffi.path "/usr/local/include/luajit-2.0"
+	ffi.path(util.luajit_include_path())
 
 	loader.initialize(cache, ffi.main_ffi_state)
 

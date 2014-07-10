@@ -18,9 +18,7 @@ ffi.cdef [[
 ]]
 
 local function lock_cache()
-	print('b4ptrs4:')
 	if not _mutex then return end
-	print('ptrs4:', ffi)
 	PT.pthread_mutex_lock(_mutex)
 end
 local function unlock_cache()
@@ -131,7 +129,7 @@ function _M.initialize(cache, loader_ffi_state)
 	else
 		_M.ffi_state = ffi.newstate()
 		_M.ffi_state:copt { cc = "gcc" }
-		_M.ffi_state:path "/usr/local/include/luajit-2.0"
+		ffi.path(util.luajit_include_path())
 	end
 	if cache then
 		_master = false

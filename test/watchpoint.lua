@@ -1,4 +1,7 @@
 local ffi = require 'ffiex'
+if ffi.os ~= "Linux" then
+	return true
+end
 local thread = require 'pulpo.thread'
 thread.initialize({ cdef_cache_dir = "./tmp/cdefs" })
 
@@ -6,11 +9,11 @@ local wp = require 'pulpo.debug.watchpoint'
 
 local i = ffi.new('int[1]')
 
-wp(i, function (addr)
+local idx = wp(i, nil, nil, function (addr)
 	logger.warn('watchpoint', addr, debug.traceback())
 	assert(ffi.cast('void *', i) == ffi.cast('void *', addr))
 end)
-wp.untrap()
+-- wp.untrap(idx)
 
 print(ffi.C.getpid(), 'watchpoint check:================================')
 
