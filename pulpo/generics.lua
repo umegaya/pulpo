@@ -1,13 +1,14 @@
 local ffi = require 'ffiex'
 local memory = require 'pulpo.memory'
 local loader = require 'pulpo.loader'
+local util = require 'pulpo.util'
 
 local C = ffi.C
-local PT = ffi.load("pthread")
+local ffi_state, PT = nil, ffi.load("pthread")
 local _M = {}
 
 loader.add_lazy_initializer(function ()
-	loader.load('generics.lua', {
+	ffi_state, PT = loader.load('generics.lua', {
 		"pthread_rwlock_t", 
 		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
 		"pthread_rwlock_unlock", 
@@ -22,21 +23,22 @@ end)
 
 local created = {}
 local function cdef_generics(type, tag, tmpl, mt, name)
-	local typename, ct = tag:format(type)
-	if not created[typename] then
-		created[typename] = true
+	local typename = tag:format(type)
+	name = name or typename
+	if not created[name] then
+		created[name] = true
 		local decl = tmpl:gsub("%$(%w+)", {
-			tagname = name or typename, 
+			tagname = name, 
 			basetype = type, 
-			typename = name or typename,
+			typename = name,
 		})
 		-- print('decl = '..decl)
 		ffi.cdef(decl)
-		ct = ffi.metatype(typename, mt)
+		ffi.metatype(name, mt)
 	else
-		ct = ffi.typeof(typename)
+		ffi.typeof(name)
 	end
-	return typename
+	return name
 end
 
 -- generic erastic list
@@ -104,9 +106,9 @@ function _M.erastic_map(type, name)
 				for i=0,t.used-1,1 do
 					local e = t.list[i]
 					memory.free(e.name)
-					local ok, fn = pcall(debug.getmetatable(data).__index, data, "fin")
+					local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
 					if ok then
-						data:fin()
+						e.data:fin()
 					end
 				end
 				memory.free(t.list)
@@ -121,6 +123,9 @@ function _M.erastic_map(type, name)
 						error('fail to reserve space:'..space)
 					end
 				end
+			end,
+			get = function (t, name)
+				return t:put(name)
 			end,
 			put = function (t, name, init)
 				t:reserve(1) -- at least 1 entry room
@@ -141,7 +146,7 @@ function _M.erastic_map(type, name)
 				return e.data
 			end,
 		}
-	})
+	}, name)
 end
 
 -- rwlock pointer

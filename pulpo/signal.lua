@@ -5,15 +5,14 @@ local util = require 'pulpo.util'
 
 local C = ffi.C
 local _M = {}
-local ffi_state
-local PT = ffi.load("pthread")
+local ffi_state, PT = nil, ffi.load("pthread")
 
 local SIG_IGN
 local SA_RESTART, SA_SIGINFO
 local SIGMASK_OP
 
-loader.add_lazy_initializer(function ()
-	ffi_state = loader.load("signal.lua", {
+function _M.initialize()
+	loader.load("signal.lua", {
 		"signal", "sigaction", "func sigaction", 
 		"sigemptyset", "sigaddset", "sig_t", 
 	}, {
@@ -26,7 +25,7 @@ loader.add_lazy_initializer(function ()
 	}, nil, [[
 		#include <signal.h>
 	]])
-	ffi_state = loader.load("pthread_signal.lua", {
+	ffi_state, PT = loader.load("pthread_signal.lua", {
 		"pthread_sigmask"
 	}, {}, "pthread", [[
 		#include <signal.h>
@@ -51,17 +50,28 @@ loader.add_lazy_initializer(function ()
 			pulpo_assert(false, "unsupported OS:"..ffi.os)
 		end
 	end
+	local sighandler_t
+	if ffi.os == "OSX" then
+		sighandler_t = ffi.typeof('void (*)(int, struct __siginfo *, void *)')
+	elseif ffi.os == "Linux" then
+		sighandler_t = ffi.typeof('void (*)(int, siginfo_t *, void *)')
+	else
+		pulpo_assert(false, "unsupported OS:"..ffi.os)
+	end
 
-	_M.dumped = false
+	_M.signal_handlers = {}
 	_M.original_signals = {}
-	_M.signal("SIGSEGV", function (sno, info, p)
-		if not _M.dumped then
-			logger.fatal("SIGSEGV", faultaddr(info), debug.traceback())
-			_M.dumped = true
-			os.exit(-2)
-		end
-	end)
 	local thread = require 'pulpo.thread'
+	local callback = ffi.cast(sighandler_t, function (sno, info, p)
+		-- print('sig handler(called):', _M.signal_handlers)
+		_M.signal_handlers[sno](sno, info, p)
+	end)
+	-- print('sig handler(init):', _M.signal_handlers, callback)
+	thread.tls.common_signal_handler = callback
+	_M.common_signal_handler = ffi.cast(sighandler_t, function (sno, info, p)
+		-- this may called from another 
+		ffi.cast(sighandler_t, thread.tls.common_signal_handler)(sno, info, p)
+	end)
 	thread.register_exit_handler(function ()
 		for signo, sa in pairs(_M.original_signals) do
 			logger.info('rollback signal', signo)
@@ -69,7 +79,14 @@ loader.add_lazy_initializer(function ()
 			memory.free(sa)
 		end
 	end)
-end)
+	-- show segv stacktrace. I understand that is unsafe. but if app is crushed by this, so what?
+	-- sooner or later it is crushed by illegal memory access. 
+	-- I want to bet small chance to get useful information about cause.
+	_M.signal("SIGSEGV", function (sno, info, p)
+		logger.fatal("SIGSEGV", faultaddr(info))
+		os.exit(-2)
+	end)
+end
 
 function _M.maskctl(op, ...)
 	local sigset = ffi.new('sigset_t[1]')
@@ -118,12 +135,13 @@ function _M.signal(signo, handler, optional_saflags)
 	end
 	local sset = memory.managed_alloc_typed('sigset_t')
 	if ffi.os == "OSX" then
-		sa[0].__sigaction_u.__sa_sigaction = handler
+		sa[0].__sigaction_u.__sa_sigaction = _M.common_signal_handler
 	elseif ffi.os == "Linux" then
-		sa[0].__sigaction_handler.sa_sigaction = handler
+		sa[0].__sigaction_handler.sa_sigaction = _M.common_signal_handler
 	else
 		pulpo_assert(false, "unsupported OS:"..ffi.os)
 	end
+	_M.signal_handlers[tonumber(signo)] = handler
 	sa[0].sa_flags = bit.bor(SA_SIGINFO, SA_RESTART, optional_saflags or 0)
 	if C.sigemptyset(sset) ~= 0 then
 		return false

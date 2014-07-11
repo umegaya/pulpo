@@ -54,7 +54,6 @@ for i=1,util.n_cpu(),1 do
 	end)
 	local t = thread.create(function (targs)
 		local ffi = require 'ffi'
-		local PT = ffi.load('pthread')
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
 		local idx = (ffi.cast('int*', targs))[0]

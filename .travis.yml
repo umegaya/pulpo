@@ -1,7 +1,7 @@
 language: lua
 
 env:
-  #- LUAJIT_VERSION="v2.1" LUAJIT_BIN="luajit-2.1.0-alpha"
+  - LUAJIT_VERSION="v2.1" LUAJIT_BIN="luajit-2.1.0-alpha"
   - LUAJIT_VERSION="master" LUAJIT_BIN="luajit"
 
 compiler:

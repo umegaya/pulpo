@@ -1,6 +1,6 @@
 local ffi = require 'ffiex'
 local C = ffi.C
-local PT = ffi.load("pthread")
+local PT
 
 local _M = {}
 local log = require 'pulpo.logger'
@@ -70,6 +70,7 @@ function _M.init_share_memory()
 		} pulpo_thread_idseed_t;
 	]]
 	_M.id_seed = _M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	PT = ffi.load("pthread")
 end
 
 -- others initialized by this.

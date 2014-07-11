@@ -6,7 +6,6 @@ local memory = require 'pulpo.memory'
 local tcp = require 'pulpo.socket.tcp'
 
 local C = ffi.C
-local PT = ffi.load("pthread")
 
 require 'test.tools.config'
 

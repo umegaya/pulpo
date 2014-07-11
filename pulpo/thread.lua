@@ -17,7 +17,7 @@ end
 
 local _M = {}
 local C = ffi.C
-local PT = ffi.load('pthread')
+local PT, ffi_state
 
 -- cdefs
 ffi.cdef [[
@@ -38,12 +38,13 @@ function _M.init_cdef(cache)
 
 	loader.initialize(cache, ffi.main_ffi_state)
 
-	loader.load("pthread.lua", {
+	ffi_state, PT = loader.load("pthread.lua", {
 		--> from pthread
 		"pthread_t", "pthread_mutex_t", 
 		"pthread_mutex_lock", "pthread_mutex_unlock", 
 		"pthread_mutex_init", "pthread_mutex_destroy",
 		"pthread_create", "pthread_join", "pthread_self",
+		"pthread_key_create", "pthread_setspecific", "pthread_getspecific", 
 		"pthread_equal", 
 	}, {}, "pthread", [[
 		#include <pthread.h>
@@ -69,6 +70,9 @@ function _M.init_cdef(cache)
 	LUA_GLOBALSINDEX = loader.ffi_state.defs.LUA_GLOBALSINDEX
 
 	ffi.cdef [[
+		typedef struct pulpo_tls {
+			pthread_key_t key[1];
+		} pulpo_tls_t;
 		typedef void *(*pulpo_thread_proc_t)(void *);
 		typedef void (*pulpo_exit_handler_t)(void);
 		typedef struct pulpo_thread_handle {
@@ -195,6 +199,42 @@ function _M.init_cdef(cache)
 			end,
 		}
 	})
+	ffi.cdef(([[
+		typedef struct pulpo_tls_list {
+			%s list;
+		} pulpo_tls_list_t;
+	]]):format(gen.rwlock_ptr(gen.erastic_map('pulpo_tls_t'))))
+	ffi.metatype('pulpo_tls_list_t', {
+		__index = setmetatable({
+			init = function (t)
+				t.list:init(function (data) data:init() end)
+			end,
+			fin = function (t)
+				t.list:fin(function (data) data:fin() end)
+			end,
+			cache = {},
+		}, {
+			__index = function (t, k)
+				local v = t.cache[k]
+				if not v then
+					v = t.list:read(function (data)
+						return data:get(k)
+					end)
+					rawset(t.cache, k, v)
+				end
+				return v and PT.pthread_getspecific(v.key[0]) or nil
+			end,
+		}), 
+		__newindex = function (t, k, v)
+			return t.list:write(function (data, name, value)
+				local elem = data:put(k, function (e)
+					assert(0 == PT.pthread_key_create(e.data.key, nil), "fail to key_create:"..ffi.errno())
+				end)
+				assert(0 == PT.pthread_setspecific(elem.key[0], value), "fail to setspecific:"..ffi.errno())
+				return elem
+			end, k, v)
+		end,
+	})
 end
 
 -- variables
@@ -226,6 +266,14 @@ function _M.initialize(opts)
 	threads:insert(_M.me)
 	-- initialize mutex lock for cdef loader
 	loader.init_mutex(ffi.cast("pulpo_shmem_t*", threads.shared_memory))
+	-- initialize tls list
+	_M.tls = threads:share_memory('tls', function ()
+		local list = memory.alloc_typed('pulpo_tls_list_t')
+		list:init()
+		return "pulpo_tls_list_t", list
+	end)
+	-- signal initialization
+	signal.initialize()
 	_M.main = true
 end
 
@@ -233,14 +281,17 @@ function _M.init_worker(args)
 	pulpo_assert(args)
 	-- initialize pthread_mutex_*
 	ffi.cdef(ffi.string(args.initial_cdecl))
-	-- initialize pulpo_shmem_t (depends on pthread_mutex_*)
+	-- initialize pulpo_shmem_t* (depends on pthread_mutex_* and required by init_mutex)
 	shmem.initialize() 
 	-- add mutex to loader module. now loader.load thread safe.
 	loader.init_mutex(ffi.cast("pulpo_shmem_t*", args.shmem))
 	_M.init_cdef(ffi.cast("pulpo_parsed_info_t*", args.cache))
 	threads = ffi.cast("pulpo_thread_manager_t*", args.manager)
+	_M.tls = threads:share_memory('tls')
 	-- initialize current thread handle
 	_M.me = ffi.cast("pulpo_thread_handle_t*", args.handle)
+	-- signal initialization
+	signal.initialize()
 	-- wait for this thread appears in global thread list
 	local cnt = 100
 	while not threads:find(PT.pthread_self()) and (cnt > 0) do

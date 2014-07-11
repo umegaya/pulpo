@@ -160,8 +160,6 @@ function _M.init_mutex(shm)
 		local r = PT.pthread_mutex_init(p, nil)
 		if r ~= 0 then
 			logger.error('mutex_init failure:', r, ffi.errno())
-		else
-			logger.warn('p == ', p, debug.traceback())
 		end
 		return 'pthread_mutex_t', p
 	end)
