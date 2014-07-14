@@ -1,9 +1,10 @@
-local loader = require 'pulpo.loader'
 local ffi = require 'ffiex'
+local thread = require 'pulpo.thread'
+
 local _M = {}
 local ffi_state
 
-loader.add_lazy_initializer(function ()
+thread.add_initializer(function (loader, shmem)
 	ffi_state = loader.load("errno.lua", {}, {
 		"EAGAIN", "EWOULDBLOCK", "ENOTCONN", "EINPROGRESS", "EPIPE", 
 		regex = {

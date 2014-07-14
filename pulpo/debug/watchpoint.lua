@@ -153,7 +153,7 @@ local function run_ptrace_process(...)
 		table.insert(tmp, tostring(arg))
 	end
         local cmd = (
-                'luajit -e "(require \'pulpo.thread\').initialize({ cdef_cache_dir=\'%s\'});'..
+                'luajit -e "(require \'pulpo.thread\').initialize({ cache_dir=\'%s\'});'..
                 '(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
         ):format(
                 loader.cache_dir,

@@ -2,14 +2,15 @@
 local ffi = require 'ffiex'
 local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
+local lock = require 'pulpo.lock'
 local loader = require 'pulpo.loader'
-local errno = require 'pulpo.errno'
-local signal = require 'pulpo.signal'
-local util = require 'pulpo.util'
-local gen = require 'pulpo.generics'
 local shmem = require 'pulpo.shmem'
-local fs = require 'pulpo.fs'
 local log = require 'pulpo.logger'
+-- these are initialized after thread module initialization
+local signal
+local errno
+local util
+local gen
 log.initialize()
 if not _G.pulpo_assert then
 	_G.pulpo_assert = assert
@@ -17,16 +18,16 @@ end
 
 local _M = {}
 local C = ffi.C
-local PT, ffi_state
+local PT = C
+local ffi_state
 
 -- cdefs
 ffi.cdef [[
 	typedef struct pulpo_thread_args_dummy {
-		void *manager;
-		void *cache;
 		void *shmem;
 		void *handle;
-		char *initial_cdecl;
+		void *mutex;
+		char *bootstrap_cdefs;
 		void *original;
 	} pulpo_thread_args_dummy_t;
 ]]
@@ -36,9 +37,7 @@ local LUA_GLOBALSINDEX
 function _M.init_cdef(cache)
 	ffi.path(util.luajit_include_path())
 
-	loader.initialize(cache, ffi.main_ffi_state)
-
-	ffi_state, PT = loader.load("pthread.lua", {
+	ffi_state = loader.load("pthread.lua", {
 		--> from pthread
 		"pthread_t", "pthread_mutex_t", 
 		"pthread_mutex_lock", "pthread_mutex_unlock", 
@@ -46,13 +45,9 @@ function _M.init_cdef(cache)
 		"pthread_create", "pthread_join", "pthread_self",
 		"pthread_key_create", "pthread_setspecific", "pthread_getspecific", 
 		"pthread_equal", 
-	}, {}, "pthread", [[
+	}, {}, _M.PTHREAD_LIB_NAME, [[
 		#include <pthread.h>
 	]])
-
-	if not cache then
-		shmem.initialize()
-	end
 
 	loader.load("lua.lua", {
 		--> from luauxlib, lualib
@@ -84,22 +79,16 @@ function _M.init_cdef(cache)
 			pulpo_thread_handle_t **list;
 			int size, used;
 			pthread_mutex_t mtx[1];
-			pulpo_shmem_t shared_memory[1];
 			char *initial_cdecl;
 		} pulpo_thread_manager_t;
 		typedef struct pulpo_thread_args {
-			pulpo_thread_manager_t *manager;
-			pulpo_parsed_info_t *cache;
 			pulpo_shmem_t *shmem;
 			pulpo_thread_handle_t *handle;
-			char *initial_cdecl;
+			pthread_mutex_t *mutex;
+			char *bootstrap_cdefs;
 			void *original;
 		} pulpo_thread_args_t;
 	]]
-
-	local INITIAL_REQUIRED_CDECL = {
-		"pthread_mutex_t", "pthread_mutex_lock", "pthread_mutex_unlock"
-	}
 
 	--> metatype
 	ffi.metatype("pulpo_thread_handle_t", {
@@ -115,7 +104,6 @@ function _M.init_cdef(cache)
 				t.list = pulpo_assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
 					"fail to allocate thread list")
 				assert(0 == PT.pthread_mutex_init(t.mtx, nil), "mutex_init fail:"..ffi.errno())
-				t.shared_memory[0]:init()
 				t.initial_cdecl = memory.strdup(
 					parser.inject(ffi.main_ffi_state.tree, INITIAL_REQUIRED_CDECL)
 				)
@@ -132,7 +120,6 @@ function _M.init_cdef(cache)
 					memory.free(t.initial_cdecl)
 				end
 				PT.pthread_mutex_destroy(t.mtx)
-				t.shared_memory[0]:fin()
 			end,
 			insert = function (t, thread)
 				PT.pthread_mutex_lock(t.mtx)
@@ -194,9 +181,6 @@ function _M.init_cdef(cache)
 				end
 				return p
 			end,
-			share_memory = function (t, name, init)
-				return t.shared_memory[0]:find_or_init(name, init)
-			end,
 		}
 	})
 	ffi.cdef(([[
@@ -238,64 +222,95 @@ function _M.init_cdef(cache)
 end
 
 -- variables
-local threads
-
--- main thread only, apply global option to module
-local function apply_options(opts)
-	_M.opts = opts
-	if opts.cdef_cache_dir then
-		util.mkdir(opts.cdef_cache_dir)
-		loader.set_cache_dir(opts.cdef_cache_dir)
-	end
-end
+local _threads
+local _shared_memory
 
 -- TODO : initialize & init_worker's initialization order is really complex (even messy)
--- mainly because loader require pthread_mutex_* symbols, but these symbols are also required loader.
--- main thread only can initialize loader's mutex after init_cdef() finished, because we can assume any other
--- thread is not exist before pulpo's initialization is done.
-
--- initialize thread module. created threads are initialized with manager
-function _M.initialize(opts)
-	apply_options(opts or {})
+local function setup_shmem_args(shmemp)
+	loader.cache_dir = ffi.string(shmemp:find_or_init('cache_dir', function ()
+		return 'char', memory.strdup(loader.cache_dir)
+	end))
+	loader.cache = shmemp:find_or_init('cache', function ()
+		return 'pulpo_parsed_info_t', loader.cache
+	end)
+	loader.load_mutex = shmemp:find_or_init('cdef_load_mutex', function ()
+		local mutex = memory.alloc_typed('pthread_mutex_t')
+		PT.pthread_mutex_init(mutex, nil)
+		return 'pthread_mutex_t', mutex
+	end)
 	_M.init_cdef()
-	threads = memory.alloc_typed("pulpo_thread_manager_t")
-	threads:init()
-	-- initialize pseudo thread handle of main thread
-	_M.me = memory.alloc_fill_typed("pulpo_thread_handle_t")
-	_M.me.pt = C.pthread_self()
-	threads:insert(_M.me)
-	-- initialize mutex lock for cdef loader
-	loader.init_mutex(ffi.cast("pulpo_shmem_t*", threads.shared_memory))
-	-- initialize tls list
-	_M.tls = threads:share_memory('tls', function ()
+	_threads = shmemp:find_or_init('threads', function ()
+		local thmgr = memory.alloc_typed("pulpo_thread_manager_t")
+		thmgr:init()
+		return 'pulpo_thread_manager_t', thmgr
+	end)
+	_M.tls = shmemp:find_or_init('tls', function ()
+		-- pulpo_tls_list_t is already initialized init_cdef (above)
 		local list = memory.alloc_typed('pulpo_tls_list_t')
 		list:init()
 		return "pulpo_tls_list_t", list
 	end)
-	-- signal initialization
-	signal.initialize()
-	_M.main = true
 end
-
-function _M.init_worker(args)
-	pulpo_assert(args)
-	-- initialize pthread_mutex_*
-	ffi.cdef(ffi.string(args.initial_cdecl))
-	-- initialize pulpo_shmem_t* (depends on pthread_mutex_* and required by init_mutex)
-	shmem.initialize() 
-	-- add mutex to loader module. now loader.load thread safe.
-	loader.init_mutex(ffi.cast("pulpo_shmem_t*", args.shmem))
-	_M.init_cdef(ffi.cast("pulpo_parsed_info_t*", args.cache))
-	threads = ffi.cast("pulpo_thread_manager_t*", args.manager)
-	_M.tls = threads:share_memory('tls')
-	-- initialize current thread handle
-	_M.me = ffi.cast("pulpo_thread_handle_t*", args.handle)
-	-- signal initialization
-	signal.initialize()
-	-- wait for this thread appears in global thread list
+local initializers = {}
+local function init_modules(loader, shmemp)
+	for _,fn in ipairs(initializers) do
+		fn(loader, shmemp)
+	end
+end
+local function load_lazy_modules()
+	signal = require 'pulpo.signal'
+	errno = require 'pulpo.errno'
+	util = require 'pulpo.util'
+	gen = require 'pulpo.generics'
+end
+function _M.add_initializer(fn)
+	table.insert(initializers, fn)
+end
+function _M.initialize(opts)
+	local i = 0
+	opts = opts or { cache_dir = "/tmp/pulpo" }
+	load_lazy_modules()
+	-- create common cache dir
+	util.mkdir(opts.cache_dir)
+	-- initialize loader and its cache directory.
+	loader.initialize(opts, ffi.main_ffi_state)
+	util.mkdir(loader.cache_dir)
+	-- in main thread lock module requires loader module to setup ffi decls
+	lock.initialize(opts)
+	-- gen.initialize()
+	-- now gen (depends on pthread lock primitives) will be enable, shmem can be enabled
+	shmem.initialize(opts)
+	_shared_memory = memory.alloc_typed('pulpo_shmem_t')
+	_shared_memory[0]:init()
+	-- pick (or init) all necessary shared memory object from loader and lock module
+	-- after that, loader.load can be callable with thread safety
+	setup_shmem_args(_shared_memory)
+	-- other module's initializer called
+	init_modules(loader, _shared_memory, opts)
+	-- initialize pseudo thread handle of main thread
+	_M.me = memory.alloc_fill_typed("pulpo_thread_handle_t")
+	_M.me.pt = C.pthread_self()
+	_threads:insert(_M.me)
+end
+function _M.init_worker(arg)
+	load_lazy_modules()
+	-- in worker thread, all "loader" call will be protected by mutex, so init lock first
+	lock.init_worker(arg.mutex, arg.bootstrap_cdefs)
+	-- then initialize shared memory (after that, all module can get shared pointer through it)
+	shmem.init_worker()
+	_shared_memory = ffi.cast('pulpo_shmem_t*', arg.shmem)
+	-- initalize loader (only ffi_state and flags)
+	loader.init_worker(ffi.main_ffi_state)
+	-- setup values from shmem. now loader.load can be callable with thread safety
+	setup_shmem_args(_shared_memory)
+	-- other module's initializer called
+	init_modules(loader, _shared_memory)
+	-- initialize current thread handles
+	_M.me = ffi.cast("pulpo_thread_handle_t*", arg.handle)
+	-- wait for thread appears in global list
 	local cnt = 100
-	while not threads:find(PT.pthread_self()) and (cnt > 0) do
-		thread.sleep(0.01)
+	while not _threads:find(PT.pthread_self()) and (cnt > 0) do
+		_thread.sleep(0.01)
 		cnt = cnt - 1
 	end
 	pulpo_assert(cnt > 0, "thread initialization timeout")
@@ -303,11 +318,12 @@ end
 
 -- global finalize. no need to call from worker
 function _M.finalize()
-	if _M.main and threads then
+	if _M.main and _threads then
 		_M.fin_worker()
-		threads:fin()
-		memory.free(threads)
+		_threads:fin()
+		memory.free(_threads)
 		loader.finalize()
+		lock.finalize()
 	end
 end
 -- release thread local resources. each worker need to call this
@@ -326,7 +342,7 @@ function _M.fin_worker(thread, on_finalize)
 	-- if run time destruction, remove this thread from list
 	if not on_finalize then
 		-- because all thread memory is freed after that
-		threads:remove(thread)
+		_threads:remove(thread)
 	end
 	memory.free(thread)
 end
@@ -374,17 +390,16 @@ function _M.create(proc, args, opaque, debug)
 
 	local t = ffi.new("pthread_t[1]")
 	local argp = memory.alloc_typed("pulpo_thread_args_t")
-	argp.manager = threads
-	argp.cache = loader.get_cache_ptr()
-	argp.shmem = threads.shared_memory
+	argp.shmem = _shared_memory
 	argp.handle = th
-	argp.initial_cdecl = threads.initial_cdecl
+	argp.bootstrap_cdefs = lock.bootstrap_cdefs
+	argp.mutex = lock.load_mutex
 	argp.original = args
 	th.L = L
 	th.opaque = opaque
 	pulpo_assert(PT.pthread_create(t, nil, ffi.cast("pulpo_thread_proc_t", mainloop), argp) == 0)
 	th.pt = t[0]
-	return threads:insert(th) and th or nil
+	return _threads:insert(th) and th or nil
 end
 
 -- destroy thread.
@@ -425,13 +440,13 @@ function _M.set_opaque(thread, p)
 end
 
 -- global share memory
-function _M.share_memory(k, v)
-	return threads:share_memory(k, v)
+function _M.shared_memory(k, v)
+	return _shared_memory:find_or_init(k, v)
 end
 
 -- iterate all thread in this process
 function _M.fetch(fn)
-	return threads:fetch(fn)
+	return _threads:fetch(fn)
 end
 
 -- nanosleep

@@ -1,14 +1,17 @@
 local ffi = require 'ffiex'
 local memory = require 'pulpo.memory'
+local thread = require 'pulpo.thread'
 local loader = require 'pulpo.loader'
 local util = require 'pulpo.util'
 
 local C = ffi.C
-local ffi_state, PT = nil, ffi.load("pthread")
+local PT = C
+local ffi_state
 local _M = {}
 
-loader.add_lazy_initializer(function ()
-	ffi_state, PT = loader.load('generics.lua', {
+-- if you want to use gen independently with thread module, please call this.
+function _M.initialize()
+	ffi_state = loader.load('generics.lua', {
 		"pthread_rwlock_t", 
 		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
 		"pthread_rwlock_unlock", 
@@ -16,10 +19,10 @@ loader.add_lazy_initializer(function ()
 		"pthread_mutex_t",
 		"pthread_mutex_lock", "pthread_mutex_unlock",
 		"pthread_mutex_init", "pthread_mutex_destroy",
-	}, {}, "pthread", [[
+	}, {}, thread.PTHREAD_LIB_NAME, [[
 		#include <pthread.h>
 	]])
-end)
+end
 
 local created = {}
 local function cdef_generics(type, tag, tmpl, mt, name)
@@ -160,9 +163,9 @@ local rwlock_ptr_tmpl = [[
 function _M.rwlock_ptr(type, name)
 	return cdef_generics(type, rwlock_ptr_name_tag, rwlock_ptr_tmpl, {
 		__index = {
-			init = function (t, ctor)
+			init = function (t, ctor, ...)
 				assert(0 == PT.pthread_rwlock_init(t.lock, nil), "rwlock_init fails:"..ffi.errno())
-				if ctor then t:write(ctor) end
+				if ctor then t:write(ctor, ...) end
 			end,
 			fin = function (t, fzr)
 				if fzr then t:write(fzr) end
@@ -205,9 +208,9 @@ local mutex_ptr_tmpl = [[
 function _M.mutex_ptr(type, name)
 	return cdef_generics(type, mutex_ptr_name_tag, mutex_ptr_tmpl, {
 		__index = {
-			init = function (t, ctor)
+			init = function (t, ctor, ...)
 				assert(0 == PT.pthread_mutex_init(t.lock, nil), "mutex init error:"..ffi.errno())
-				if ctor then t:touch(ctor) end
+				if ctor then t:touch(ctor, ...) end
 			end,
 			fin = function (t, fzr)
 				if fzr then t:touch(fzr) end

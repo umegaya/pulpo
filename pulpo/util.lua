@@ -1,5 +1,5 @@
 local ffi = require 'ffiex'
-local loader = require 'pulpo.loader'
+local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 
 local C = ffi.C
@@ -56,7 +56,7 @@ end
 --> ffi related utils
 local C = ffi.C
 local RLIMIT_NOFILE, RLIMIT_CORE
-loader.add_lazy_initializer(function ()
+thread.add_initializer(function (loader, shmem)
 	local ffi_state = loader.load('util.lua', {
 		"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
 		"gettimeofday", "snprintf", 

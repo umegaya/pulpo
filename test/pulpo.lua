@@ -9,12 +9,12 @@ local NCLIENTCORES = 2
 pulpo.initialize({
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
 	maxconn = NCLIENTS, 
-	cdef_cache_dir = './tmp/cdefs'
+	cache_dir = '/tmp/pulpo'
 })
 
 require 'test.tools.config'
 
-local cf = pulpo.share_memory('config', function ()
+local cf = pulpo.shared_memory('config', function ()
 	local socket = require 'pulpo.socket'
 	local config = memory.alloc_typed('test_config_t')
 	config.n_iter = NITER
@@ -32,7 +32,7 @@ pulpo.create_thread(function (args)
 	-- run server thread group with n_server_core (including *this* thread)
 	pulpo.run({
 		group = "server",
-		n_core = pulpo.share_memory('config').n_server_core,
+		n_core = pulpo.shared_memory('config').n_server_core,
 	}, "./test/tools/server.lua")
 end, nil, nil, true)
 
@@ -45,7 +45,7 @@ pulpo.create_thread(function (args)
 	-- run client thread group with n_client_core (including *this* thread)
 	pulpo.run({
 		group = "client",
-		n_core = pulpo.share_memory('config').n_client_core,
+		n_core = pulpo.shared_memory('config').n_client_core,
 	}, "./test/tools/client.lua")
 end, nil, nil, true)
 

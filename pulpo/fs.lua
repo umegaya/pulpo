@@ -1,5 +1,5 @@
 local ffi = require 'ffiex'
-local loader = require 'pulpo.loader'
+local thread = require 'pulpo.thread'
 
 local C = ffi.C
 local _M = {}
@@ -57,7 +57,7 @@ end
 ---------------------------------------------------
 -- main module
 ---------------------------------------------------
-loader.add_lazy_initializer(function () 
+thread.add_initializer(function (loader, shmem) 
 	loader.load('fs.lua', { 
 		"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t",
 		"stat", "mkdir", "struct stat", "fileno",

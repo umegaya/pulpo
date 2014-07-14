@@ -13,7 +13,7 @@ local NITER = 100
 local opts = {
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
 	maxconn = NCLIENTS, 
-	cdef_cache_dir = './tmp/cdefs'
+	cache_dir = '/tmp/pulpo'
 }
 thread.initialize(opts)
 poller.initialize(opts)

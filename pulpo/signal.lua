@@ -1,17 +1,17 @@
-local loader = require 'pulpo.loader'
+local thread = require 'pulpo.thread'
 local ffi = require 'ffiex'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
 
 local C = ffi.C
 local _M = {}
-local ffi_state, PT = nil, ffi.load("pthread")
+local ffi_state, PT
 
 local SIG_IGN
 local SA_RESTART, SA_SIGINFO
 local SIGMASK_OP
 
-function _M.initialize()
+thread.add_initializer(function (loader, shmem)
 	loader.load("signal.lua", {
 		"signal", "sigaction", "func sigaction", 
 		"sigemptyset", "sigaddset", "sig_t", 
@@ -27,7 +27,7 @@ function _M.initialize()
 	]])
 	ffi_state, PT = loader.load("pthread_signal.lua", {
 		"pthread_sigmask"
-	}, {}, "pthread", [[
+	}, {}, thread.PTHREAD_LIB_NAME, [[
 		#include <signal.h>
 	]])
 
@@ -61,7 +61,6 @@ function _M.initialize()
 
 	_M.signal_handlers = {}
 	_M.original_signals = {}
-	local thread = require 'pulpo.thread'
 	local callback = ffi.cast(sighandler_t, function (sno, info, p)
 		-- print('sig handler(called):', _M.signal_handlers)
 		_M.signal_handlers[sno](sno, info, p)
@@ -86,7 +85,7 @@ function _M.initialize()
 		logger.fatal("SIGSEGV", faultaddr(info))
 		os.exit(-2)
 	end)
-end
+end)
 
 function _M.maskctl(op, ...)
 	local sigset = ffi.new('sigset_t[1]')

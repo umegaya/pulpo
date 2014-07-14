@@ -84,7 +84,7 @@ end
 local poller_module
 local function common_initialize(opts)
 	--> change system limits
-	_M.config = thread.share_memory('__poller__', function ()
+	_M.config = thread.shared_memory('__poller__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
 		data.maxfd = util.maxfd(opts.maxfd or 1024)
 		data.maxconn = util.maxconn(opts.maxconn or 512)
