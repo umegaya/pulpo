@@ -15,4 +15,5 @@ RUN git clone https://github.com/umegaya/pulpo.git /tmp/pulpo
 RUN FROM_DOCKER=y bash /tmp/pulpo/test/tools/travis_install.sh
 RUN git config --global user.email "iyatomi@gmail.com"
 RUN git config --global user.name "takehiro iyatomi"
+RUN apt-get -y install g++
 RUN bash /tmp/pulpo/test/tools/bench_install.sh
