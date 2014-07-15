@@ -11,6 +11,8 @@ pushd /tmp/packages
 GO_VERSION=1.3.linux-amd64
 wget http://golang.org/dl/go$GO_VERSION.tar.gz
 tar -C /usr/local -xzf go$GO_VERSION.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bash_profile
+source ~/.bash_profile
 
 # install node
 NODE_VERSION=v0.10.29
