@@ -3,7 +3,7 @@ local ffi = require 'ffiex'
 -- ffi.__DEBUG_CDEF__ = true
 
 pulpo.initialize({
-	cdef_cache_dir = './tmp/cdefs'
+	cache_dir = '/tmp/pulpo'
 })
 
 local event = pulpo.event

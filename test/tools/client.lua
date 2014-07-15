@@ -6,14 +6,13 @@ local memory = require 'pulpo.memory'
 local tcp = require 'pulpo.socket.tcp'
 
 local C = ffi.C
-local PT = ffi.load("pthread")
 
 require 'test.tools.config'
 
 local loop = pulpo.mainloop
-local config = pulpo.share_memory('config')
+local config = pulpo.shared_memory('config')
 local concurrency = math.floor(config.n_client / config.n_client_core)
-local finished = pulpo.share_memory('finished', function ()
+local finished = pulpo.shared_memory('finished', function ()
 	local t = gen.rwlock_ptr('exec_state_t')
 	local p = memory.alloc_typed(t)
 	p:init(function (data) 

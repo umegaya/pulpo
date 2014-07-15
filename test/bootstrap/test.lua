@@ -1,21 +1,5 @@
 local dir = io.popen('ls test')
 local term = require 'pulpo.terminal'
-local launcher = [[
-(function launch(file)
-local ok, r = pcall(loadfile, file)
-if ok and r then
-	ok, r = pcall(r)
-	if ok and r then
-		os.exit(0)
-	else
-		print('fail to test:'..file, r)
-		os.exit(-1)
-	end
-else
-	print('fail to load test:'..file, r)
-	os.exit(-2)
-end)('%s')
-]]
 
 while true do
 	local file = dir:read()
@@ -23,7 +7,7 @@ while true do
 	file = ('test/' .. file)
 	if file:find('%.lua$') then
 		term.resetcolor(); print('test: '..file..' ==========================================')
-		local ok, r = pcall(os.execute, "luajit test/tools/launch.lua "..file)
+		local ok, r = pcall(os.execute, arg[-1].." test/tools/launch.lua "..file)
 		if ok and r then
 			if r ~= 0 then
 				term.red(); print('test fails:' .. file .. '|' .. r)

@@ -1,10 +1,11 @@
 local ffi = require 'ffiex'
-local gen = require 'pulpo.generics'
 local memory = require 'pulpo.memory'
 
 local _M = {}
 
-function _M.initialize()
+function _M.initialize(opts)
+	local gen = require 'pulpo.generics'
+	
 	ffi.cdef[[ 
 		typedef struct pulpo_memblock {
 			char *name;
@@ -21,10 +22,10 @@ function _M.initialize()
 	ffi.metatype('pulpo_shmem_t', {
 		__index = {
 			init = function (t, sz)
-				t.blocks:touch(function (data, size) data:init(size) end, sz or 16)
+				t.blocks:init(function (data, size) data:init(size) end, sz or 16)
 			end,
 			fin = function (t, sz)
-				t.blocks:touch(function (data) 
+				t.blocks:fin(function (data) 
 					for i=0,data.used-1,1 do
 						e = data.list[i]
 						memory.free(e.name)
@@ -72,6 +73,10 @@ function _M.initialize()
 			end,
 		}
 	})
+end
+
+function _M.init_worker()
+	return _M.initialize()
 end
 
 return _M

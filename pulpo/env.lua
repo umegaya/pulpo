@@ -1,6 +1,5 @@
 local ffi = require 'ffiex'
 local loader = require 'pulpo.loader'
-local errno = require 'pulpo.errno'
 
 local _M = {}
 local C = ffi.C
@@ -22,7 +21,7 @@ local env_mt = {
 		end
 		local r = ((v ~= nil) and C.setenv(k, tostring(v), true) or C.unsetenv(k))
 		if r ~= 0 then
-			error("error change env:"..errno.errno())
+			error("error change env:"..ffi.errno())
 		end
 	end,
 }

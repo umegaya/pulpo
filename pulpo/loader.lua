@@ -3,8 +3,8 @@ local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
 local _M = {}
 local C = ffi.C
-local PT = ffi.load("pthread")
-local _cache,_master,_mutex
+local PT = C
+local _master
 
 ffi.cdef [[
 	typedef struct pulpo_parsed_cache {
@@ -18,12 +18,12 @@ ffi.cdef [[
 ]]
 
 local function lock_cache()
-	if not _mutex then return end
-	PT.pthread_mutex_lock(_mutex)
+	if not _M.load_mutex then return end
+	PT.pthread_mutex_lock(_M.load_mutex)
 end
 local function unlock_cache()
-	if not _mutex then return end
-	PT.pthread_mutex_unlock(_mutex)
+	if not _M.load_mutex then return end
+	PT.pthread_mutex_unlock(_M.load_mutex)
 end
 
 ffi.metatype('pulpo_parsed_info_t', {
@@ -52,6 +52,7 @@ ffi.metatype('pulpo_parsed_info_t', {
 			end
 		end,
 		find = function (t, name)
+			-- print('find', t.list, t.used, t.size, name)
 			for i=0,(t.used - 1),1 do
 				if ffi.string(t.list[i].name) == name then
 					return t.list[i]
@@ -116,64 +117,38 @@ ffi.metatype('pulpo_parsed_info_t', {
 	}
 })
 
-local function lazy_initialize()
-	--> initialize lazy init modules
-	for _,init in ipairs(_M.lazy_initializers) do
-		init()
-	end
-end
-
-function _M.initialize(cache, loader_ffi_state)
+local function init_ffi_state(loader_ffi_state)
 	if loader_ffi_state then
 		_M.ffi_state = loader_ffi_state
 	else
 		_M.ffi_state = ffi.newstate()
 		_M.ffi_state:copt { cc = "gcc" }
-		_M.ffi_state:path "/usr/local/include/luajit-2.0"
+		ffi.path(util.luajit_include_path())
 	end
-	if cache then
-		_master = false
-		_cache = cache
-		_M.set_cache_dir(ffi.string(_cache.path))
-	else
-		_master = true
-		_cache = pulpo_assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
-		_cache:init(_M.cache_dir)
-	end
-
-	lazy_initialize()
+end
+function _M.initialize(opts, loader_ffi_state)
+	init_ffi_state(loader_ffi_state)
+	_master = true
+	_M.cache = pulpo_assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
+	local dir = (opts.cache_dir.."/cdefs")
+	_M.cache:init(dir)
+	_M.cache_dir = dir
+	-- _M.load_mutex set inside thread.lua
 end
 
-_M.lazy_initializers = {}
-function _M.add_lazy_initializer(initializer)
-	table.insert(_M.lazy_initializers, initializer)
-end
-
-function _M.set_cache_dir(path)
-	-- print('set cache dir:'..path)
-	_M.cache_dir = path
-end
-
-function _M.init_mutex(shm)
-	_mutex = shm:find_or_init('cache_lock', function ()
-		local p = memory.alloc_typed('pthread_mutex_t')
-		assert(p ~= ffi.NULL, "p null1")
-		PT.pthread_mutex_init(p, nil)
-		assert(p ~= ffi.NULL, "p null2")
-		return 'pthread_mutex_t', p
-	end)
-	assert(_mutex and (_mutex ~= ffi.NULL), "mutex NULL")
-end
-
-function _M.get_cache_ptr()
-	pulpo_assert(_cache, "cache not initialized")
-	return _cache
+function _M.init_worker(loader_ffi_state)
+	init_ffi_state(loader_ffi_state)
+	_master = false
 end
 
 function _M.finalize()
 	if _master then
-		_cache:fin()
-		memory.free(_cache)
+		_M.cache:fin()
+		memory.free(_M.cache)
+		if _M.load_mutex then
+			PT.pthread_mutex_destroy(_M.load_mutex)
+			-- no need to free _M.load_mutex by manually because it managed by shmem module.
+		end
 	end
 end
 
@@ -245,7 +220,7 @@ local function merge_regex(tree, macros)
 end
 
 function _M.unsafe_load(name, cdecls, macros, lib, from)
-	local c = _cache:find(name)
+	local c = _M.cache:find(name)
 	local tmp_cdecls = merge_nice_to_have(cdecls)
 	local tmp_macros = merge_nice_to_have(macros)
 	if not c then
@@ -255,14 +230,14 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 		tmp_macros = merge_regex(_M.ffi_state.tree, tmp_macros)
 		local _macro = inject_macros(_M.ffi_state, tmp_macros)
 		--> initialize parsed information
-		c = pulpo_assert(_cache:add(name, _cdecl, _macro), "fail to cache:"..name)
+		c = pulpo_assert(_M.cache:add(name, _cdecl, _macro), "fail to cache:"..name)
 	else
 		-- print('macro:[['..ffi.string(c.macro)..']]')
 		_M.ffi_state:cdef(ffi.string(c.macro))
 		-- parse and inject cdecl to prevent double definition
-		-- print("ptr", name, c, c.cdecl, _cache.used)
+		-- print("ptr", name, c, c.cdecl, _M.cache.used)
 		_M.ffi_state:parse(ffi.string(c.cdecl))
-		-- print("end ptr", name, c, c.cdecl, _cache.used)
+		-- print("end ptr", name, c, c.cdecl, _M.cache.used)
 	end
 	-- print('===============================================')
 	-- print(name, 'cdecl', ffi, ffi.string(c.cdecl)) 
@@ -275,7 +250,7 @@ function _M.unsafe_load(name, cdecls, macros, lib, from)
 	end
 	for _,decl in ipairs(cdecls) do
 		local s,e = decl:find('%s+')
-		if s then
+		if s then	
 			decl = decl:sub(e+1)
 		end
 		local ok, r = pcall(getmetatable(clib).__index, clib, decl)
@@ -318,7 +293,8 @@ local caution = [[it may caused by outdated cdef cache.
 so luact will remove cache dir. 
 try restart to recreate cdef cache.]]
 function _M.load(name, cdecls, macros, lib, from)
-	local i = 0
+	--local i = 0
+	--print('ldr.load', i); i = i + 1
 	lock_cache()
 	local ret = {pcall(_M.unsafe_load, name, cdecls, macros, lib, from)}
 	unlock_cache()
@@ -331,11 +307,19 @@ function _M.load(name, cdecls, macros, lib, from)
 				util.rmdir(_M.cache_dir)
 			end
 		else
-			logger.error(msg:format(err .. "\n" .. debug.traceback(), ""))
+			print(msg:format(err .. "\n" .. debug.traceback(), ""))
 		end
 		os.exit(-1)
 	end
 	return unpack(ret)
+end
+
+function _M.find_as_string(name)
+	local e = _M.cache:find(name)
+	if e then
+		return (ffi.string(e.cdecl).."\n"..ffi.string(e.macro))
+	end
+	return nil
 end
 
 return _M

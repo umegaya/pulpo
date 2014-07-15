@@ -1,7 +1,7 @@
 -- avoid pulpo symbol inside thread proc, regard as upvalue
 local _pulpo = require 'pulpo.init'
 _pulpo.initialize({
-	cdef_cache_dir = './tmp/cdefs',
+	cache_dir = '/tmp/pulpo',
 	io_pending_threshold = 50000,
 })
 

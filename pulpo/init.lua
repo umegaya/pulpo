@@ -1,6 +1,6 @@
 local ffi = require 'ffiex'
 local C = ffi.C
-local PT = ffi.load("pthread")
+local PT = C
 
 local _M = {}
 local log = require 'pulpo.logger'
@@ -31,13 +31,14 @@ local gen = require 'pulpo.generics'
 local util = require 'pulpo.util'
 local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
+local lock = require 'pulpo.lock'
 
 _M.thread = thread
 _M.logpfx = "[????] "
 _M.poller = poller
 _M.tentacle = tentacle
 _M.event = event
-_M.share_memory = thread.share_memory
+_M.shared_memory = thread.shared_memory
 
 -- only main thread call this.
 function _M.initialize(opts)
@@ -47,7 +48,7 @@ function _M.initialize(opts)
 	if not _M.initialized then
 		thread.initialize(opts)
 		poller.initialize(opts)
-		_M.init_share_memory()
+		_M.init_shared_memory()
 		_M.mainloop = poller.new()
 		_M.init_cdef()
 		_M.init_opaque()
@@ -63,20 +64,20 @@ function _M.finalize()
 	end
 end
 
-function _M.init_share_memory()
+function _M.init_shared_memory()
 	ffi.cdef[[
 		typedef struct pulpo_thread_idseed {
 			int cnt;
 		} pulpo_thread_idseed_t;
 	]]
-	_M.id_seed = _M.share_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
 -- others initialized by this.
 function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
-		_M.init_share_memory()
+		_M.init_shared_memory()
 		_M.mainloop = poller.new()
 		_M.init_cdef()
 		_M.initialized = true

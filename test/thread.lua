@@ -4,10 +4,14 @@ local ffi = require 'ffiex'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local thread = require 'pulpo.thread'
+local loader = require 'pulpo.loader'
 
 thread.initialize({
-	cdef_cache_dir = './tmp/cdefs'
+	cache_dir = './tmp'
 })
+
+--local wp = require 'pulpo.debug.watchpoint'
+--wp(tonumber(ffi.cast('int', _G.crush_mutex)) + 28)
 
 logger.info('----- test1 -----')
 local args = memory.alloc_typed('int', 3)
@@ -44,7 +48,7 @@ local params = {}
 for i=1,util.n_cpu(),1 do
 	local a = memory.alloc_typed('int', 1)
 	a[0] = i
-	thread.share_memory('thread_shm'..i, function ()
+	thread.shared_memory('thread_shm'..i, function ()
 		local ptr = memory.alloc_typed('int', 1)
 		ptr[0] = a[0]
 		return 'int', ptr
@@ -54,8 +58,8 @@ for i=1,util.n_cpu(),1 do
 		local thread = require 'pulpo.thread'
 		local memory = require 'pulpo.memory'
 		local idx = (ffi.cast('int*', targs))[0]
-		logger.warn('thread:', thread.me, idx)
-		local ptr = thread.share_memory('thread_shm'..idx)
+		logger.warn('thread:', thread.me, idx, ffi)
+		local ptr = thread.shared_memory('thread_shm'..idx)
 		ptr[0] = (idx + 1) * 111
 		while ptr[0] > 0 do
 			thread.sleep(0.1)
@@ -73,7 +77,7 @@ while true do
 		for i=1,size-1,1 do
 			if not finished[i] then
 				pulpo_assert(thread.equal(threads[i], thread_list[i]), "thread handle will be same")
-				local pi = thread.share_memory('thread_shm'..i)
+				local pi = thread.shared_memory('thread_shm'..i)
 				if pi[0] == i then
 					success = false
 					break

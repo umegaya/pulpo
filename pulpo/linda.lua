@@ -64,7 +64,7 @@ ffi.metatype('pulpo_linda_t', {
 	},
 })
 
-return thread.share_memory('linda', function ()
+return thread.shared_memory('linda', function ()
 	local ptr = memory.alloc_typed('pulpo_linda_t')
 	ptr:init()
 	return 'pulpo_linda_t', ptr

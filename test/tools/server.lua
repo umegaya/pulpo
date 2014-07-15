@@ -6,7 +6,7 @@ local tcp = require 'pulpo.socket.tcp'
 require 'test.tools.config'
 
 local loop = pulpo.mainloop
-local config = pulpo.share_memory('config')
+local config = pulpo.shared_memory('config')
 local n_accept = 0
 
 -- if executed by pulpo.run, main file is also run under tentacle.

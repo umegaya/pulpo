@@ -1,5 +1,5 @@
 local ffi = require 'ffiex'
-local loader = require 'pulpo.loader'
+local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 
 local C = ffi.C
@@ -7,6 +7,13 @@ local _M = {}
 
 --> add NULL symbol
 ffi.NULL = ffi.new('void*')
+
+--> hack for getting luajit include file path
+local major = math.floor(jit.version_num / 10000)
+local minor = math.floor((jit.version_num - major * 10000) / 100)
+function _M.luajit_include_path()
+	return '/usr/local/include/luajit-'..major..'.'..minor
+end
 
 --> non-ffi related util
 function _M.n_cpu()
@@ -49,7 +56,7 @@ end
 --> ffi related utils
 local C = ffi.C
 local RLIMIT_NOFILE, RLIMIT_CORE
-loader.add_lazy_initializer(function ()
+thread.add_initializer(function (loader, shmem)
 	local ffi_state = loader.load('util.lua', {
 		"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
 		"gettimeofday", "snprintf", 
