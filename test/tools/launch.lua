@@ -1,3 +1,4 @@
+print('launch:', arg[1])
 local ok, r = pcall(loadfile, arg[1])
 if ok and r then
 	ok, r = pcall(r)
