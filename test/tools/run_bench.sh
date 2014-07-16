@@ -1,7 +1,7 @@
 pushd /tmp/echoserver
 
 # 0. create real bench.sh to execute
-sed -i s/sag15/localhost/g bench.sh
+sed -i s/sag15/127.0.0.1/g bench.sh
 if [ "$1" != "" ]; then
 	sed -i s/-c50/-c$1/g bench.sh
 fi
@@ -9,9 +9,14 @@ if [ "$2" != "" ]; then
 	sed -i s/-h10000/-h$2/g bench.sh
 fi
 
+echo "client script ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+cat bench.sh
+
 pid=0
 echo "============= 1. pulpo thread = 1 ============="
 pushd /tmp/pulpo
+git pull
+LD_PRELOAD=libpthread.so.0 luajit test/poller.lua # build cdefs
 LD_PRELOAD=libpthread.so.0 luajit test/tools/listen.lua 1 5000 &
 popd
 pid=$!

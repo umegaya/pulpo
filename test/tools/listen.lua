@@ -19,7 +19,7 @@ local cf = pulpo.shared_memory('config', function ()
 	local config = memory.alloc_typed('test_config_t')
 	config.n_iter = NITER
 	config.n_client = NCLIENTS
-	config.port = (arg[2] or 8008)
+	config.port = tonumber(arg[2] or 8008)
 	config.n_server_core = socket.port_reusable() and NSERVERCORES or 1
 	config.finished = false
 	return 'test_config_t', config
