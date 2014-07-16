@@ -12,7 +12,7 @@ fi
 pid=0
 echo "============= 1. pulpo thread = 1 ============="
 pushd /tmp/pulpo
-luajit test/tools/listen.lua 1 &
+LD_PRELOAD=libpthread.so.0 luajit test/tools/listen.lua 1 5000 &
 popd
 pid=$!
 ./bench.sh
@@ -38,7 +38,7 @@ kill -9 $pid
 
 echo "============= 5. pulpo thread = 4 ============="
 pushd /tmp/pulpo
-luajit test/tools/listen.lua 4 &
+LD_PRELOAD=libpthread.so.0 luajit test/tools/listen.lua 4 5000 &
 popd
 pid=$!
 ./bench.sh
@@ -46,7 +46,7 @@ kill -9 $pid
 
 echo "============= 5. pulpo(luajit 2.1) thread = 4 ============="
 pushd /tmp/pulpo
-luajit-2.1.0-alpha test/tools/listen.lua 4 &
+LD_PRELOAD=libpthread.so.0 luajit-2.1.0-alpha test/tools/listen.lua 4 5000 &
 popd
 pid=$!
 ./bench.sh

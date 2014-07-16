@@ -7,6 +7,7 @@ ffi.cdef [[
 		int n_client;
 		int n_client_core;
 		int n_server_core;
+		int port;
 		bool finished;
 	} test_config_t;
 	typedef struct exec_state {

@@ -21,6 +21,7 @@ local cf = pulpo.shared_memory('config', function ()
 	config.n_client = NCLIENTS
 	config.n_client_core = NCLIENTCORES
 	config.n_server_core = socket.port_reusable() and 4 or 1
+	config.port = 8008
 	config.finished = false
 	return 'test_config_t', config
 end)

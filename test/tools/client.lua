@@ -25,7 +25,7 @@ end)
 local client_msg = ("hello,luact poll"):rep(16)
 for i=0,concurrency - 1,1 do
 	tentacle(function ()
-		local s = tcp.connect(loop, '127.0.0.1:8008')
+		local s = tcp.connect(loop, '127.0.0.1:'..tostring(config.port))
 -- logger.info("start tentacle", s:fd())
 		io.stdout:write("-"); io.stdout:flush()
 		local ptr,len = ffi.new('char[256]')
