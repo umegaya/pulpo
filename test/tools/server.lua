@@ -27,8 +27,9 @@ while loop.alive do
 			-- print('read end', len)
 			fd:write(ptr, len)
 		end
+		fd:close()
 	end, _fd)
-	if (n_accept % 100) == 0 then
-		logger.warn('server:accept:', n_accept)
-	end
+	--if (n_accept % 100) == 0 then
+	--	logger.warn('server:accept:', n_accept)
+	--end
 end

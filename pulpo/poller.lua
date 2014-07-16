@@ -46,7 +46,7 @@ function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
 function io_index.close(t)
-	logger.info("fd=", t:fd(), " closed by user")
+	-- logger.info("fd=", t:fd(), " closed by user")
 	t:fin()
 end
 io_index.emit = event.emit
@@ -86,7 +86,7 @@ local function common_initialize(opts)
 	--> change system limits
 	_M.config = thread.shared_memory('__poller__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
-		data.maxfd = util.maxfd(opts.maxfd or 1024)
+		data.maxfd = util.maxfd(opts.maxfd or 1024, true)
 		data.maxconn = util.maxconn(opts.maxconn or 512)
 		if opts.rmax or opts.wmax then
 			data.rmax, data.wmax = util.setsockbuf(opts.rmax, opts.wmax)

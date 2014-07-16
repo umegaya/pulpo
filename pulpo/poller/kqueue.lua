@@ -80,7 +80,7 @@ local poller_cdecl, poller_index, io_index, event_index = nil, {}, {}, {}
 	};
 ]]
 function io_index.init(t, poller, fd, type, ctx)
-	pulpo_assert(t.ev.flags == 0 or t.ev.ident == 0, 
+	pulpo_assert(t.ev.flags == 0, 
 		"already used event buffer:"..tonumber(t.ev.ident))
 	t.ev.flags = bit.bor(EV_ADD, EV_CLEAR)
 	t.ev.ident = fd

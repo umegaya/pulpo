@@ -84,14 +84,27 @@ thread.add_initializer(function (loader, shmem)
 	_M.tval = ffi.new('struct timeval[1]')
 end)
 
-function _M.maxfd(set_to)
+function _M.getrlimit(type)
+	local rlim = ffi.new('struct rlimit[1]')
+	assert(0 == C.getrlimit(type, rlim), "rlimit fails:"..ffi.errno())
+	return rlim[0].rlim_cur, rlim[0].rlim_max
+end
+
+function _M.maxfd(set_to, increase_only)
 	if set_to then
+		if increase_only then
+			local current = _M.getrlimit(RLIMIT_NOFILE)
+			if current >= set_to then
+				logger.info('not need to increase because current:'..tonumber(current).." vs "..set_to)
+				return current
+			end
+		end
 		--> set max_fd to *set_to*
 		C.setrlimit(RLIMIT_NOFILE, ffi.new('struct rlimit', {set_to, set_to}))
 		return set_to
 	else
 		--> returns current max_fd
-		return C.getrlimit(RLIMIT_NOFILE)
+		return _M.getrlimit(RLIMIT_NOFILE)
 	end
 end
 

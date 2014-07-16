@@ -59,7 +59,7 @@ struct epoll_event {
 };
 ]]
 function io_index.init(t, poller, fd, type, ctx)
-	pulpo_assert(t.ev.events == 0 or t.ev.data.fd == 0, 
+	pulpo_assert(t.opened == 0, 
 		"already used event buffer:"..tonumber(t.ev.data.fd))
 	t.ev.events = 0
 	t.ev.data.fd = fd
