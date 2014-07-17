@@ -11,6 +11,11 @@ RUN apt-get -y install tar
 RUN apt-get -y install zip
 RUN apt-get -y install unzip
 RUN apt-get -y install sudo
+RUN apt-get -y install ssh
+RUN mkdir /var/run/sshd
+RUN chmod 0755 /var/run/sshd
+RUN sed -ri 's/UsePAM yes/#UsePAM yes/g' /etc/ssh/sshd_config
+RUN sed -ri 's/#UsePAM no/UsePAM no/g' /etc/ssh/sshd_config
 RUN git clone https://github.com/umegaya/pulpo.git /tmp/pulpo
 RUN FROM_DOCKER=y bash /tmp/pulpo/test/tools/travis_install.sh
 RUN git config --global user.email "iyatomi@gmail.com"
