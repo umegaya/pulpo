@@ -31,7 +31,7 @@ run_bench() {
 		WD=$2
 	fi
 	if [ "$SSL_CMD" != "" ]; then
-		ssh $SSL_CMD "/tmp/pulpo/test/tools/run_remote.sh $WD $1"
+		ssh $SSL_CMD "bash /tmp/pulpo/test/tools/run_remote.sh $WD '$1'"
 		sleep 1s
 		./bench.sh
 		sleep 1s

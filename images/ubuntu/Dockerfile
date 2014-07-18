@@ -10,6 +10,7 @@ RUN apt-get -y install wget
 RUN apt-get -y install tar
 RUN apt-get -y install zip
 RUN apt-get -y install unzip
+RUN apt-get -y install psmisc
 RUN apt-get -y install sudo
 RUN apt-get -y install ssh
 RUN mkdir /var/run/sshd

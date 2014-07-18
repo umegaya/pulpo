@@ -12,4 +12,5 @@ sleep 3s
 
 pushd $1
 eval "$2" &
+sleep 1s
 popd
