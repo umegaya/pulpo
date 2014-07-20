@@ -62,3 +62,13 @@ $SUDO bash install.sh
 popd
 popd
 
+# install jemalloc
+JEMALLOC_VERSION=3.6.0
+pushd tmp
+git clone https://github.com/jemalloc/jemalloc.git --branch $JEMALLOC_VERSION
+pushd jemalloc
+autoconf && ./configure && make && $SUDO make install
+popd
+popd
+
+
