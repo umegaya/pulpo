@@ -2,7 +2,7 @@ language: lua
 
 env:
   #- LUAJIT_VERSION="v2.1" TEST_BIN="luajit-2.1.0-alpha test/bootstrap/test.lua" PRELOAD="libpthread.so.0"
-  - LUAJIT_VERSION="master" TEST_BIN="luajit test/bootstrap/test.lua" PRELOAD="libpthread.so.0"
+  - LUAJIT_VERSION="master" TEST_BIN="luajit test/bootstrap/test.lua" PRELOAD="/usr/local/lib/libjemalloc.so.1 libpthread.so.0"
   - LUAJIT_VERSION="master" TEST_BIN="bash test/bootstrap/thread_test.sh 30" PRELOAD="libpthread.so.0"
 
 compiler:
@@ -12,7 +12,7 @@ before_script:
   - sudo mkdir -p /usr/local/share/lua/5.1/
   - sudo chmod -R 777 /usr/local
 
-script: "sudo LUAJIT_VERSION=$LUAJIT_VERSION bash test/tools/travis_install.sh && LD_PRELOAD=$PRELOAD $TEST_BIN"
+script: "sudo LUAJIT_VERSION=$LUAJIT_VERSION bash test/tools/travis_install.sh && LD_PRELOAD=\"$PRELOAD\" $TEST_BIN"
 
 branches:
   only:

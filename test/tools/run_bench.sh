@@ -3,7 +3,6 @@ pushd /tmp/echoserver
 git reset --hard
 
 # 0. create real bench.sh to execute
-sed -i s/sag15/127.0.0.1/g bench.sh
 if [ "$1" != "" ]; then
 	sed -i s/-o2/-o$1/g bench.sh
 else
@@ -17,7 +16,10 @@ if [ "$3" != "" ]; then
 fi
 SSL_CMD=
 if [ "$4" != "" ]; then
+	sed -i s/sag15/$4/g bench.sh
 	SSL_CMD="-p 2222 root@$4"
+else
+	sed -i s/sag15/127.0.0.1/g bench.sh
 fi
 if [ "$5" != "" ]; then
 	SSL_CMD=$5
@@ -29,7 +31,7 @@ run_bench() {
 		WD=$2
 	fi
 	if [ "$SSL_CMD" != "" ]; then
-		ssh $SSL_CMD "/tmp/pulpo/test/tools/run_remote.sh $WD $1"
+		ssh $SSL_CMD "bash /tmp/pulpo/test/tools/run_remote.sh $WD '$1'"
 		sleep 1s
 		./bench.sh
 		sleep 1s
