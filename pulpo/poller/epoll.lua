@@ -87,7 +87,7 @@ function io_index.fin(t)
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
-io_index.wait_timer = event.wait_read
+io_index.wait_emit = event.wait_read
 function io_index.read_yield(t)
 	if t.rpoll == 0 then
 		t.ev.events = bit.bor(EPOLLIN, EPOLLET, t.wpoll ~= 0 and EPOLLOUT or 0)

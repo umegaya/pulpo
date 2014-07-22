@@ -1,17 +1,18 @@
 local ffi = require 'ffiex'
 local pulpo = require 'pulpo.init'
 local tentacle = pulpo.tentacle
-local tcp = require 'pulpo.socket.tcp'
+local tcp = require 'pulpo.io.tcp'
 
 require 'test.tools.config'
 
-local loop = pulpo.mainloop
-local config = pulpo.shared_memory('config')
+local loop = pulpo.evloop
+local tcp = loop.io.tcp
+local config = pulpo.util.getarg('test_config_t*', ...) --pulpo.shared_memory('config')
 local n_accept = 0
 
 -- if executed by pulpo.run, main file is also run under tentacle.
-local s = tcp.listen(loop, '0.0.0.0:'..tostring(config.port))
-while loop.alive do
+local s = tcp.listen('0.0.0.0:'..tostring(config.port))
+while loop.poller.alive do
 	local _fd = s:read()
 	n_accept = n_accept + 1
 	-- print('accept:', _fd:fd())

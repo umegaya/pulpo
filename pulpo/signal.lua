@@ -71,7 +71,7 @@ thread.add_initializer(function (loader, shmem)
 		-- this may called from another 
 		ffi.cast(sighandler_t, thread.tls.common_signal_handler)(sno, info, p)
 	end)
-	thread.register_exit_handler(function ()
+	thread.register_exit_handler("signal.lua", function ()
 		for signo, sa in pairs(_M.original_signals) do
 			logger.info('rollback signal', signo)
 			C.sigaction(signo, sa, nil)
@@ -87,15 +87,23 @@ thread.add_initializer(function (loader, shmem)
 	end)
 end)
 
-function _M.maskctl(op, ...)
-	local sigset = ffi.new('sigset_t[1]')
+function _M.makesigset(set, ...)
+	local sigset = set
+	if not sigset then
+		sigset = ffi.new('sigset_t[1]')
+		C.sigemptyset(sigset)
+	end
 	local sigs = {...}
-	C.sigemptyset(sigset)
 	for _,sig in ipairs(sigs) do
 		local signo = type(sig) == 'number' and sig or _M[sig]
 		assert(signo, "invalid signal definition:"..tostring(sig))
 		C.sigaddset(sigset, signo)
 	end
+	return sigset
+end
+
+function _M.maskctl(op, ...)
+	local sigset = _M.makesigset(nil, ...)
 	assert(0 == PT.pthread_sigmask(SIGMASK_OP[op], sigset, nil), op..":procmask fails:"..ffi.errno())
 end
 
@@ -117,8 +125,7 @@ function _M.ignore(signo)
 		logger.error("sigaction fails:", ffi.errno())
 		return false
 	end
-	local sa2 = memory.managed_alloc_typed('struct sigaction')
-	C.sigaction(signo, nil, sa2) 
+	return true
 end
 
 function _M.signal(signo, handler, optional_saflags)

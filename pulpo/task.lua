@@ -1,4 +1,4 @@
-local timer = require 'pulpo.socket.timer'
+local timer = require 'pulpo.io.timer'
 local event = require 'pulpo.event'
 local _M = {}
 ------------------------------------------------------------
@@ -7,7 +7,7 @@ local _M = {}
 
 -- task
 function _M.new(p, start, intv, cb, ...)
-	local io = timer.create(p, start, intv)
+	local io = timer.new(p, start, intv)
 	coroutine.wrap(function (_tm, _fn, ...)
 		local function proc(tm, fn, ...)
 			while true do

@@ -249,7 +249,7 @@ function _M.wait_read(io)
 	return t
 end
 
-function _M.wait_timer(io)
+function _M.wait_emit(io)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local ev = _M.ev_read(io)
 	table.insert(ev.waitq, co)

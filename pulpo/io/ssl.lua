@@ -262,7 +262,7 @@ local function ssl_accept(io)
 		ctx.ssl = sslp
 		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp)
 		if not ok then 
-			print('accept error:', cio)
+			logger.error('accept error:', cio)
 			ctx:fin() 
 		end
 		ctx = nil
@@ -283,8 +283,8 @@ local function ssl_server_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_SSL = poller.add_handler(ssl_read, ssl_write, ssl_gc)
-HANDLER_TYPE_SSL_LISTENER = poller.add_handler(ssl_accept, nil, ssl_server_gc)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc)
+HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
 	ssl.SSL_library_init()
@@ -296,7 +296,7 @@ function _M.initialize(opts)
 		ssl_manager_client = _M.new_context(opts)
 		opts.method = (opts.server_method or "SSLv23_server_method")
 		ssl_manager_server = _M.new_context(opts)
-		thread.register_exit_handler(function () 
+		thread.register_exit_handler("ssl.lua", function () 
 			ssl_manager_client:fin() 
 			ssl_manager_server:fin() 
 		end)
@@ -318,7 +318,7 @@ function _M.connect(p, addr, opts)
 	if ctx == ffi.NULL then 
 		error('fail to allocate ssl context pointer') 
 	end
-	local fd = socket.create_stream(addr, opts.sockopts, ctx.addrinfo)
+	local fd = socket.stream(addr, opts.sockopts, ctx.addrinfo)
 	if not fd then 
 		error('fail to create socket:'..errno.errno()) 
 	end
@@ -342,7 +342,7 @@ end
 function _M.listen(p, addr, opts)
 	opts = opts or default_opt
 	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
-	local fd = socket.create_stream(addr, opts.sockopts, ai)
+	local fd = socket.stream(addr, opts.sockopts, ai)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if socket.set_reuse_addr(fd, true) then
 		C.close(fd)

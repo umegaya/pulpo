@@ -360,7 +360,7 @@ function _M.port_reusable()
 	return SO_REUSEPORT
 end
 
-function _M.create_stream(addr, opts, addrinfo)
+function _M.stream(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp)
 	if r <= 0 then
 		logger.error('invalid address:', addr)
@@ -380,7 +380,7 @@ function _M.create_stream(addr, opts, addrinfo)
 	return fd
 end
 
-function _M.create_dgram(addr, opts, addrinfo)
+function _M.datagram(addr, opts, addrinfo)
 	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp, SOCK_DGRAM)
 	if r <= 0 then
 		logger.error('invalid address:', addr)
@@ -400,11 +400,11 @@ function _M.create_dgram(addr, opts, addrinfo)
 	return fd
 end
 
-function _M.create_mcast(addr, opts, addrinfo)
+function _M.mcast(addr, opts, addrinfo)
 	-- TODO : create multicast
 end
 
-function _M.create_unix_domain()
+function _M.unix_domain()
 	local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
 	if fd < 0 then
 		logger.error('fail to create socket:', ffi.errno())

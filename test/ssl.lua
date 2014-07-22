@@ -28,7 +28,7 @@ elseif ffi.os == "Linux" then
 end
 
 -- then init ssl module
-local ssl = require 'pulpo.socket.ssl'
+local ssl = require 'pulpo.io.ssl'
 ssl.debug = true
 ssl.initialize({
 	pubkey = "./test/certs/public.key",

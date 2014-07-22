@@ -3,14 +3,15 @@ local pulpo = require 'pulpo.init'
 local tentacle = pulpo.tentacle
 local gen = require 'pulpo.generics'
 local memory = require 'pulpo.memory'
-local tcp = require 'pulpo.socket.tcp'
+-- local tcp = require 'pulpo.io.tcp'
 
 local C = ffi.C
 
 require 'test.tools.config'
 
-local loop = pulpo.mainloop
-local config = pulpo.shared_memory('config')
+local loop = pulpo.evloop
+local tcp = loop.io.tcp
+local config = pulpo.util.getarg('test_config_t*', ...) --pulpo.shared_memory('config')
 local concurrency = math.floor(config.n_client / config.n_client_core)
 local finished = pulpo.shared_memory('finished', function ()
 	local t = gen.rwlock_ptr('exec_state_t')
@@ -25,7 +26,7 @@ end)
 local client_msg = ("hello,luact poll"):rep(16)
 for i=0,concurrency - 1,1 do
 	tentacle(function ()
-		local s = tcp.connect(loop, '127.0.0.1:'..tostring(config.port))
+		local s = tcp.connect('127.0.0.1:'..tostring(config.port))
 -- logger.info("start tentacle", s:fd())
 		io.stdout:write("-"); io.stdout:flush()
 		local ptr,len = ffi.new('char[256]')
