@@ -54,14 +54,17 @@ local function pipe_write(io, ptr, len)
 end
 
 local function pipe_gc(io)
-	memory.free(io:ctx('void*'))
+	local ctx = io:ctx('void*')
+	if ctx ~= ffi.NULL then
+		memory.free(ctx)
+	end
 	C.close(io:fd())
 end
 
-local HANDLER_TYPE_RPIPE = poller.add_handler(pipe_read, nil, pipe_gc)
-local HANDLER_TYPE_WPIPE = poller.add_handler(nil, pipe_write, pipe_gc)
+local HANDLER_TYPE_RPIPE = poller.add_handler("pipe_r", pipe_read, nil, pipe_gc)
+local HANDLER_TYPE_WPIPE = poller.add_handler("pipe_w", nil, pipe_write, pipe_gc)
 
-function _M.create(p, fds, ctx, opts)
+function _M.new(p, fds, ctx, opts)
 	if not fds then
 		fds = ffi.new('int[2]')
 		if C.pipe(fds) ~= 0 then

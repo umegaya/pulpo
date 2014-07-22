@@ -173,7 +173,7 @@ function _M.untrap(idx)
 end
 
 local thread = require 'pulpo.thread'
-thread.register_exit_handler(function ()
+thread.register_exit_handler("watchpoint.lua", function ()
 	local trapped 
 	for i=0,MAX_DR-1,1 do
 		if _M.dr7.reg["l"..i] ~= 0 then

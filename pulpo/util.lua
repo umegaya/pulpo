@@ -60,6 +60,7 @@ thread.add_initializer(function (loader, shmem)
 	local ffi_state = loader.load('util.lua', {
 		"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
 		"gettimeofday", "snprintf", 
+		"getpid", 
 	}, {
 		"RLIMIT_NOFILE",
 		"RLIMIT_CORE",
@@ -68,6 +69,7 @@ thread.add_initializer(function (loader, shmem)
 		#include <sys/time.h>
 		#include <sys/resource.h>
 		#include <stdio.h>
+		#include <unistd.h>
 	]] or (ffi.os == "Linux" and [[
 		#include <time.h>
 		#include <sys/time.h> 
@@ -75,6 +77,7 @@ thread.add_initializer(function (loader, shmem)
 		#include <sys/resource.h>
 		#undef __USE_GNU
 		#include <stdio.h>
+		#include <unistd.h>
 	]] or assert(false, "unsupported OS:"..ffi.os)))
 
 	RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
@@ -205,6 +208,14 @@ function _M.sprintf(fmt, size, ...)
 	local p = memory.managed_alloc_typed('char', size + 1)
 	local n = C.snprintf(p, size + 1, fmt, ...)
 	return ffi.string(p, n)
+end
+
+function _M.getarg(ct, ...)
+	return ffi.cast(ct, select(1, ...))
+end
+
+function _M.getpid()
+	return C.getpid()
 end
 
 return _M

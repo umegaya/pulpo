@@ -14,21 +14,20 @@ pulpo.initialize({
 
 require 'test.tools.config'
 
-local cf = pulpo.shared_memory('config', function ()
-	local socket = require 'pulpo.socket'
-	local config = memory.alloc_typed('test_config_t')
-	config.n_iter = NITER
-	config.n_client = NCLIENTS
-	config.port = tonumber(arg[2] or 8008)
-	config.n_server_core = socket.port_reusable() and NSERVERCORES or 1
-	config.finished = false
-	return 'test_config_t', config
-end)
+local config = memory.alloc_typed('test_config_t')
+local socket = require 'pulpo.socket'
+config.n_iter = NITER
+config.n_client = NCLIENTS
+config.port = tonumber(arg[2] or 8008)
+config.n_server_core = socket.port_reusable() and NSERVERCORES or 1
+config.finished = false
 
 -- run server thread group with n_server_core (including *this* thread)
 pulpo.run({
 	group = "server",
 	n_core = pulpo.shared_memory('config').n_server_core,
+	args = config
+	exclusive = true, -- use this thread is also run as worker
 }, "./test/tools/server.lua")
 
 return true

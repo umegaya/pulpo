@@ -17,6 +17,7 @@ local _M = {}
 local iolist = ffi.NULL
 local handlers = {}
 local handler_id_seed = 0
+local handler_names = {}
 local read_handlers, write_handlers, gc_handlers, error_handlers = {}, {}, {}, {}
 local HANDLER_TYPE_POLLER
 local io_index, poller_index = {}, {}
@@ -64,25 +65,25 @@ end
 function poller_index.stop(t)
 	t.alive = false
 end
-function poller_index.io(t)
-	return _M.newio(t:fd(), HANDLER_TYPE_POLLER, t)
-end
 
 ---------------------------------------------------
 -- module body
 ---------------------------------------------------
 local function nop() end
-function _M.add_handler(reader, writer, gc, err)
+function _M.add_handler(name, reader, writer, gc, err)
 	handler_id_seed = handler_id_seed + 1
 	read_handlers[handler_id_seed] = reader or nop
 	write_handlers[handler_id_seed] = writer or nop
 	gc_handlers[handler_id_seed] = gc or nop
 	error_handlers[handler_id_seed] = err or nop
+	handler_names[handler_id_seed] = name
+	logger.info('add_handler:', name, '=>', handler_id_seed)
 	return handler_id_seed
 end
 
 local poller_module
 local function common_initialize(opts)
+	opts = opts or {}
 	--> change system limits
 	_M.config = thread.shared_memory('__poller__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
@@ -120,7 +121,7 @@ function _M.initialize(opts)
 end
 
 function _M.init_worker()
-	common_initialize({})
+	common_initialize()
 end
 
 function _M.finalize()
@@ -130,6 +131,7 @@ function _M.finalize()
 	end
 	if iolist ~= ffi.NULL then
 		for i=0,_M.config.maxfd - 1,1 do
+			-- print('fin:', iolist[i]:fd())
 			iolist[i]:fin()
 		end
 		-- iolist itself allocated from poller module.
@@ -139,7 +141,7 @@ function _M.finalize()
 		end
 	end
 end
-thread.register_exit_handler(_M.finalize)
+thread.register_exit_handler("poller.lua", _M.finalize)
 
 _M.pollerlist = {}
 function _M.new()
@@ -154,22 +156,5 @@ function _M.newio(poller, fd, type, ctx)
 	io:init(poller, fd, type, ctx)
 	return io
 end
-
---> handler for poller itself
-local function poller_read(io, ptr, len)
-	local p = io:ctx('pulpo_poller_t*')
-::retry::
-	if p:wait() == 0 then
-		io:wait_read()
-		goto retry
-	end
-end
-local function poller_gc(io)
-	local p = io:ctx('pulpo_poller_t*')
-	p:fin()
-	memory.free(p)
-end
-
-HANDLER_TYPE_POLLER = _M.add_handler(poller_read, nil, poller_gc)
 
 return _M

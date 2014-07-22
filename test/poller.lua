@@ -12,7 +12,7 @@ local opts = {
 thread.initialize(opts)
 poller.initialize(opts)
 
-local tcp = require 'pulpo.socket.tcp'
+local tcp = require 'pulpo.io.tcp'
 
 local p = poller.new()
 local limit,finish,cfinish = NCLIENTS * NITER,0,0

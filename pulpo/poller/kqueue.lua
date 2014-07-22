@@ -54,6 +54,7 @@ local ffi_state,clib = loader.load("kqueue.lua", {
 local EVFILT_READ = ffi_state.defs.EVFILT_READ
 local EVFILT_WRITE = ffi_state.defs.EVFILT_WRITE
 local EVFILT_TIMER = ffi_state.defs.EVFILT_TIMER
+local EVFILT_SIGNAL = ffi_state.defs.EVFILT_SIGNAL
 
 local EV_ADD = ffi_state.defs.EV_ADD
 local EV_ONESHOT = ffi_state.defs.EV_ONESHOT
@@ -97,7 +98,7 @@ function io_index.initialized(t)
 end
 function io_index.fin(t)
 	if t:initialized() then
-		-- logger.info('io_index.fin:', t:fd())
+	-- logger.info('io_index.fin:', t:fd(), t:type())
 		t.ev.flags = 0
 		event.destroy(t)
 		gc_handlers[t:type()](t)
@@ -105,7 +106,7 @@ function io_index.fin(t)
 end
 io_index.wait_read = event.wait_read
 io_index.wait_write = event.wait_write
-io_index.wait_timer = event.wait_timer
+io_index.wait_emit = event.wait_emit
 function io_index.read_yield(t)
 	if t.rpoll == 0 then
 		t.ev.filter = EVFILT_READ
@@ -182,6 +183,18 @@ timer_event[0].flags = EV_ADD
 function poller_index.add_timer(t, fd, start, intv)
 	timer_event[0].ident = fd
 	timer_event[0].data = (intv * 1000)
+	local n = C.kevent(t.kqfd, timer_event, 1, nil, 0, t.timeout)
+	if n ~= 0 then
+		return false
+	end
+	return true
+end
+local signal_event = ffi.new('struct kevent[1]')
+signal_event[0].filter = EVFILT_SIGNAL
+signal_event[0].flags = EV_ADD
+function poller_index.add_signal(t, fd, signo)
+	timer_event[0].ident = fd
+	timer_event[0].data = signo
 	local n = C.kevent(t.kqfd, timer_event, 1, nil, 0, t.timeout)
 	if n ~= 0 then
 		return false

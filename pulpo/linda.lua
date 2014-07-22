@@ -3,7 +3,7 @@ local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
 
-local pipe = require 'pulpo.socket.pipe'
+local pipe = require 'pulpo.io.pipe'
 
 local _M = {}
 local C = ffi.C
@@ -20,10 +20,10 @@ ffi.cdef (([[
 ]]):format(gen.mutex_ptr(gen.erastic_map('pulpo_pipe_t'))))
 
 local channel_mt = {}
-function channel_mt.recv(t, ptr, len)
+function channel_mt.read(t, ptr, len)
 	return t[1]:read(ptr, len)
 end
-function channel_mt.send(t, ptr, len)
+function channel_mt.write(t, ptr, len)
 	return t[2]:write(ptr, len)
 end
 function channel_mt.event(t, event)
@@ -57,7 +57,7 @@ ffi.metatype('pulpo_linda_t', {
 				end)
 			end, tostring(k))
 			logger.info(k, 'fds:', p.fds[0], p.fds[1])
-			return setmetatable({pipe.create(poller, p.fds, nil, opts)}, {
+			return setmetatable({pipe.new(poller, p.fds, nil, opts)}, {
 				__index = channel_mt,
 			})
 		end

@@ -1,6 +1,5 @@
 local ffi = require 'ffiex'
 local poller = require 'pulpo.poller'
-local thread = require 'pulpo.thread'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local errno = require 'pulpo.errno'
@@ -41,7 +40,7 @@ local function tcp_connect(io)
 			return
 		elseif eno == ECONNREFUSED then
 			logger.info('TODO: server listen backlog may exceed: try reconnection', eno)
-			thread.sleep(0.1) -- TODO : use lightweight sleep by timer facility
+			util.sleep(0.1) -- TODO : use lightweight sleep by timer facility
 			goto retry
 		else
 			error(('tcp connect fails(%d) on %d'):format(eno, io:nfd()))
@@ -140,12 +139,12 @@ local function tcp_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_TCP = poller.add_handler(tcp_read, tcp_write, tcp_gc)
-HANDLER_TYPE_TCP_LISTENER = poller.add_handler(tcp_accept, nil, tcp_gc)
+HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc)
+HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tcp_gc)
 
 function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_tcp_context_t')
-	local fd = socket.create_stream(addr, opts, ctx.addrinfo)
+	local fd = socket.stream(addr, opts, ctx.addrinfo)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	local io = p:newio(fd, HANDLER_TYPE_TCP, ctx)
 	tcp_connect(io)
@@ -154,7 +153,7 @@ end
 
 function _M.listen(p, addr, opts)
 	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
-	local fd = socket.create_stream(addr, opts, ai)
+	local fd = socket.stream(addr, opts, ai)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if socket.set_reuse_addr(fd, true) then
 		C.close(fd)
@@ -168,7 +167,7 @@ function _M.listen(p, addr, opts)
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end
-	logger.info('listen:', fd, addr)
+	logger.info('listen:', fd, addr, p)
 	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
 end
 

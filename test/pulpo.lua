@@ -14,46 +14,35 @@ pulpo.initialize({
 
 require 'test.tools.config'
 
-local cf = pulpo.shared_memory('config', function ()
-	local socket = require 'pulpo.socket'
-	local config = memory.alloc_typed('test_config_t')
-	config.n_iter = NITER
-	config.n_client = NCLIENTS
-	config.n_client_core = NCLIENTCORES
-	config.n_server_core = socket.port_reusable() and 4 or 1
-	config.port = 8008
-	config.finished = false
-	return 'test_config_t', config
-end)
+local socket = require 'pulpo.socket'
+local config = memory.alloc_typed('test_config_t')
+config.n_iter = NITER
+config.n_client = NCLIENTS
+config.n_client_core = NCLIENTCORES
+config.n_server_core = socket.port_reusable() and 4 or 1
+config.port = 8008
+config.finished = false
 
 -- server worker
-pulpo.create_thread(function (args)
-	local pulpo = require 'pulpo.init'
-	require 'test.tools.config'
-	-- run server thread group with n_server_core (including *this* thread)
-	pulpo.run({
-		group = "server",
-		n_core = pulpo.shared_memory('config').n_server_core,
-	}, "./test/tools/server.lua")
-end, nil, nil, true)
+pulpo.run({
+	group = "server",
+	n_core = config.n_server_core,
+	arg = config,
+}, "./test/tools/server.lua")
 
-pulpo.thread.sleep(1.0)
+pulpo.util.sleep(1.0)
 
 -- client worker
-pulpo.create_thread(function (args)
-	local pulpo = require 'pulpo.init'
-	require 'test.tools.config'
-	-- run client thread group with n_client_core (including *this* thread)
-	pulpo.run({
-		group = "client",
-		n_core = pulpo.shared_memory('config').n_client_core,
-	}, "./test/tools/client.lua")
-end, nil, nil, true)
+pulpo.run({
+	group = "client",
+	n_core = config.n_client_core,
+	arg = config,
+}, "./test/tools/client.lua")
 
 
-while not cf.finished do
-	pulpo.thread.sleep(5)
-	logger.info('finished=', cf.finished)
+while not config.finished do
+	pulpo.util.sleep(5)
+	logger.info('finished=', config.finished)
 end
 
 pulpo.finalize()

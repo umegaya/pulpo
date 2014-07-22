@@ -1,7 +1,6 @@
 local ffi = require 'ffiex'
-local task = require 'pulpo.task'
 
-local g = task.newgroup(pulpo.mainloop, 0.05, 10)
+local g = pulpo.evloop.clock.new(0.05, 10)
 
 ffi.cdef [[
 	typedef union num_reader {
@@ -17,7 +16,7 @@ return {
 			local cnt = num.n
 			local ptr,len = num.ptr,0
 			while len < 4 do
-				len = len + ch:recv(ptr + len, 4 - len)
+				len = len + ch:read(ptr + len, 4 - len)
 			end
 			assert(num.n == (cnt + 1), "not sequencial")
 			if num.n % 10000 == 0 then
@@ -41,7 +40,7 @@ return {
 			num.n = cnt
 			local ptr,len = num.ptr,0
 			while len < 4 do
-				len = len + ch:send(ptr + len, 4 - len)
+				len = len + ch:write(ptr + len, 4 - len)
 			end
 			if num.n % 10000 == 0 then
 				io.stdout:write(progress_ch); io.stdout:flush()

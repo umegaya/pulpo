@@ -404,15 +404,15 @@ end
 
 -- destroy thread.
 _M.exit_handler = {}
-function _M.register_exit_handler(fn)
-	table.insert(_M.exit_handler, fn)
+function _M.register_exit_handler(name, fn)
+	table.insert(_M.exit_handler, {name, fn})
 end
 function _M.at_exit()
 	--print('at_exit')
 	--print('at_exit', #_M.exit_handler)
 	for i=#_M.exit_handler,1,-1 do
-		---print('at_exit', i)
-		_M.exit_handler[i]()
+		-- print('at_exit', _M.exit_handler[i][1])
+		_M.exit_handler[i][2]()
 	end
 	-- print('at_exit end')
 end

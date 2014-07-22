@@ -30,6 +30,9 @@ local tentacle = require 'pulpo.tentacle'
 local C = ffi.C
 local _M = {}
 
+local EAGAIN = errno.EAGAIN
+local EWOULDBLOCK = errno.EWOULDBLOCK
+
 ffi.cdef [[
 	typedef union pulpo_timer_payload {
 		long long int data;
@@ -43,7 +46,7 @@ local timer_payload_size = ffi.sizeof('pulpo_timer_payload_t')
 local timer_read
 if ffi.os == "OSX" then
 timer_read = function (io)
-	local tp = io:wait_timer()
+	local tp = io:wait_emit()
 	if tp == 'destroy' then
 		return nil
 	end
@@ -52,15 +55,16 @@ end
 elseif ffi.os == "Linux" then
 timer_read = function (io)
 ::retry::
-	local tp = io:wait_timer()
-	if tp == 'destroy' then
-		return nil
-	end
 	local n = C.read(io:fd(), timer_payload.p, timer_payload_size)
 	if n < 0 then
 		local eno = errno.errno()
-		print('C.read', eno)
-		goto retry
+		if eno == EAGAIN or eno == EWOULDBLOCK then
+			io:wait_emit()
+			goto retry
+		else
+			logger.error('timer:errno:', eno)
+			return nil
+		end
 	end		
 	assert(timer_payload_size == n)
 	return timer_payload.data
@@ -73,17 +77,14 @@ local function timer_gc(io)
 	C.close(io:fd())
 end
 
-local HANDLER_TYPE_TIMER = poller.add_handler(timer_read, nil, timer_gc)
+local HANDLER_TYPE_TIMER = poller.add_handler("timer", timer_read, nil, timer_gc)
 
 if ffi.os == "OSX" then
 ------------------------------------------------------------
 -- OSX : using kqueue EVFILT_TIMER
 ------------------------------------------------------------
-require 'pulpo.poller.kqueue' -- here it is assured that kqueue is available
-
-_M.original_socket = socket.create_unix_domain()
-_M.timer_event = ffi.new('pulpo_event_t[1]')
-function _M.create(p, start, intv, ctx)
+_M.original_socket = socket.unix_domain()
+function _M.new(p, start, intv, ctx)
 	local fd = socket.dup(_M.original_socket)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not p:add_timer(fd, start, intv) then 
@@ -127,7 +128,7 @@ _M.current = ffi.new('struct timespec[1]')
 _M.intv = ffi.new('struct timespec[1]')
 _M.itimerspec = ffi.new('struct itimerspec[1]')
 
-function _M.create(p, start, intv, ctx)
+function _M.new(p, start, intv, ctx)
 	local fd = C.timerfd_create(CLOCK_MONOTONIC, 0)
 	if fd < 0 then
 		error('fail to timerfd_create:'..errno.errno())
