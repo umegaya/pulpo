@@ -10,6 +10,7 @@ local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
 	"fcntl", "dup", "read", "write",  
+	"getifaddrs", "freeifaddrs", 
 	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
 if ffi.os == "Linux" then
@@ -38,6 +39,7 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 	#include <netdb.h>
 	#include <unistd.h>
 	#include <fcntl.h>
+	#include <ifaddrs.h>
 	union pulpo_bytes_op {
 		unsigned char p[0];
 		unsigned short s;
@@ -296,6 +298,38 @@ function _M.inet_namebyhost(addrp, dst, len)
 	else
 		return ffi.string(dst)..":"..tostring(_M.ntohs(sa.sin_port))
 	end
+end
+
+function _M.getifaddr(ifname)
+	local ppifa = ffi.new('struct ifaddrs *[1]')
+	if 0 ~= C.getifaddrs(ppifa) then
+		error('fail to get ifaddr list:'..ffi.errno())
+	end
+	local pifa = ppifa[0]
+	local addr,mask
+	if type(ifname) == 'string' then
+		while pifa ~= ffi.NULL do
+			if ffi.string(pifa.ifa_name) == ifname then
+				break
+			end
+			pifa = pifa.ifa_next
+		end
+	elseif type(ifname) == 'function' then
+		while pifa ~= ffi.NULL do
+			if ifname(pifa) then
+				break
+			end
+			pifa = pifa.ifa_next
+		end
+		if pifa == ffi.NULL then
+			C.freeifaddrs(pifa)
+			return true
+		end
+	end
+	assert(pifa ~= ffi.NULL, "not such interface:"..ifname)
+	addr,mask = pifa.ifa_addr, pifa.ifa_netmask
+	C.freeifaddrs(ppifa[0])
+	return addr, mask
 end
 
 local default = memory.alloc_fill_typed('pulpo_sockopt_t')
