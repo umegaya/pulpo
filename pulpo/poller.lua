@@ -88,7 +88,7 @@ local function common_initialize(opts)
 	_M.config = thread.shared_memory('__poller__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
 		data.maxfd = util.maxfd(opts.maxfd or 1024, true)
-		data.maxconn = util.maxconn(opts.maxconn or 512)
+		data.maxconn = util.maxconn(opts.maxconn or 1024)
 		if opts.rmax or opts.wmax then
 			data.rmax, data.wmax = util.setsockbuf(opts.rmax, opts.wmax)
 		end
