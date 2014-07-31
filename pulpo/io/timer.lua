@@ -86,10 +86,12 @@ if ffi.os == "OSX" then
 _M.original_socket = socket.unix_domain()
 function _M.new(p, start, intv, ctx)
 	local fd = socket.dup(_M.original_socket)
-	if not fd then error('fail to create socket:'..errno.errno()) end
+	if not fd then 
+		raise('syscall', 'dup', errno.errno()) 
+	end
 	if not p:add_timer(fd, start, intv) then 
 		C.close(fd)
-		error('fd:'..fd..': fail to add timer:'..errno.errno()) 
+		raise('Poller', 'fail to add timer', fd, errno.errno())
 	end
 	logger.info('timer:', fd, start, intv)
 	return p:newio(fd, HANDLER_TYPE_TIMER, ctx)
@@ -131,14 +133,14 @@ _M.itimerspec = ffi.new('struct itimerspec[1]')
 function _M.new(p, start, intv, ctx)
 	local fd = C.timerfd_create(CLOCK_MONOTONIC, 0)
 	if fd < 0 then
-		error('fail to timerfd_create:'..errno.errno())
+		raise('syscall', 'timerfd_create', errno.errno())
 	end
 	if socket.setsockopt(fd) < 0 then
-		error('fail to set sockopt:'..errno.errno())
+		raise('syscall', 'setsockopt', errno.errno())
 	end
 	if rt.clock_gettime(CLOCK_MONOTONIC, _M.current) < 0 then
 		C.close(fd)
-		error('fail to get clock:'..errno.errno())
+		raise('syscall', 'clock_gettime', errno.errno())
 	end
 	util.sec2timespec(start, _M.start)
 	util.sec2timespec(intv, _M.intv)
@@ -152,7 +154,7 @@ function _M.new(p, start, intv, ctx)
 	_M.itimerspec[0].it_value = _M.start[0]
 	if C.timerfd_settime(fd, TFD_TIMER_ABSTIME, _M.itimerspec, nil) < 0 then
 		C.close(fd)
-		error('fail to timerfd_settime:'..errno.errno())
+		raise('syscall', 'timerfd_settime', errno.errno())
 	end
 	logger.info('timer:', fd, start, intv, HANDLER_TYPE_TIMER)
 	

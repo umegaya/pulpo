@@ -90,17 +90,16 @@ function io_index.init(t, poller, fd, type, ctx)
 	t.rpoll = 0
 	t.wpoll = 0
 	t.p = poller
-	event.add_read_to(t)
-	event.add_write_to(t)
+	event.add_io_events(t)
 end
 function io_index.initialized(t)
 	return t.ev.flags ~= 0
 end
-function io_index.fin(t)
+function io_index.fin(t, reason)
 	if t:initialized() then
 	-- logger.info('io_index.fin:', t:fd(), t:type())
 		t.ev.flags = 0
-		event.destroy(t)
+		event.destroy(t, reason)
 		gc_handlers[t:type()](t)
 	end
 end

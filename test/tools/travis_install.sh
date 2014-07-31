@@ -41,7 +41,7 @@ popd
 fi
 
 # install luarocks
-CHECK=`luarocks -v`
+CHECK=`luarocks --version`
 LUAROCKS_VERSION=2.1.2
 if [ "$CHECK" = "" ]; then
 pushd tmp

@@ -100,6 +100,7 @@ function _M.initialize(sets, chs, global_name)
 			setting("warn", 2, "yellow")
 			setting("error", 3, "magenta")
 			with_bt("error")
+			setting("report", 3, "magenta")
 			setting("fatal", 4, "red")
 			with_bt("fatal")
 		end
