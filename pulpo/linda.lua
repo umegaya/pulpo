@@ -26,6 +26,10 @@ end
 function channel_mt.write(t, ptr, len)
 	return t[2]:write(ptr, len)
 end
+function channel_mt.close(t)
+	t[1]:close()
+	t[2]:close()
+end
 function channel_mt.event(t, event)
 	if event == 'write' then
 		return t[2]:event(event)

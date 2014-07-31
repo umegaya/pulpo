@@ -6,6 +6,9 @@ local util = require 'pulpo.util'
 local fs = require 'pulpo.fs'
 local signal = require 'pulpo.signal'
 local event = require 'pulpo.event'
+local exception = require 'pulpo.exception'
+local raise = exception.raise
+
 -- ffi.__DEBUG_CDEF__ = true
 local log = require 'pulpo.logger'
 log.initialize()
@@ -28,6 +31,8 @@ ffi.cdef[[
 	} pulpo_poller_config_t;
 ]]
 
+exception.define('Poller')
+
 ---------------------------------------------------
 -- system independent poller object's API
 ---------------------------------------------------
@@ -46,9 +51,9 @@ end
 function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
-function io_index.close(t)
+function io_index.close(t, reason)
 	-- logger.info("fd=", t:fd(), " closed by user")
-	t:fin()
+	t:fin(reason)
 end
 io_index.emit = event.emit
 io_index.event = event.get

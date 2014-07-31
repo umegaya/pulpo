@@ -2,6 +2,8 @@ local loader = require 'pulpo.loader'
 local ffi = require 'ffiex'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
+local exception = require 'pulpo.exception'
+local raise = exception.raise
 
 local C = ffi.C
 local _M = {}
@@ -118,6 +120,20 @@ elseif ffi.os == "Linux" then
 	pulpo_assert(ffi_state.defs.__BYTE_ORDER ~= ffi_state.defs.__PDP_ENDIAN, "unsupported endian: PDP")
 	LITTLE_ENDIAN = (ffi_state.defs.__BYTE_ORDER == ffi_state.defs.__LITTLE_ENDIAN)
 end
+
+
+--> exception
+--> exception 
+exception.define('syscall', {
+	message = function (t)
+		return ('tcp %s fails(%d) on %d'):format(t.args[1], t.args[2], t.args[3] or -1)
+	end,
+})
+exception.define('pipe', {
+	message = function (t)
+		return ('remote peer closed')
+	end,
+})
 
 
 
@@ -326,7 +342,9 @@ function _M.getifaddr(ifname)
 			return true
 		end
 	end
-	assert(pifa ~= ffi.NULL, "not such interface:"..ifname)
+	if pifa == ffi.NULL then
+		raise("not_found", "interface:", ifname)
+	end
 	addr,mask = pifa.ifa_addr, pifa.ifa_netmask
 	C.freeifaddrs(ppifa[0])
 	return addr, mask
@@ -381,13 +399,14 @@ end
 function _M.set_reuse_addr(fd, reuse)
 	reuse = ffi.new('int[1]', {reuse and 1 or 0})
 	if C.setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reuse, ffi.sizeof(reuse)) < 0 then
-		error('fail to setsockopt:reuseaddr:'..ffi.errno())
+		return false
 	end
 	if _M.port_reusable() then
 		if C.setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, reuse, ffi.sizeof(reuse)) < 0 then
-			error('fail to setsockopt:reuseport:'..ffi.errno())
+			return false
 		end
 	end
+	return true
 end
 
 function _M.port_reusable()

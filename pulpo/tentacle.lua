@@ -11,7 +11,7 @@ local function tentacle_proc(ev, body, ...)
 			logger.notice('tentacle result:', unpack(args))
 		end
 	else
-		logger.error('tentacle result:', unpack(args))
+		logger.report('tentacle result:', unpack(args))
 	end
 	ev:emit('end', unpack(args))
 end
