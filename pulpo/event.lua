@@ -83,17 +83,17 @@ function _M.get(emitter, type)
 	return eventlist[id][type]
 end
 
-function _M.destroy(emitter)
+function _M.destroy(emitter, reason)
 	local id = emitter:__emid()
 	local evlist = eventlist[id]
 	for type,ev in pairs(evlist) do
-		_M.emit_destroy(emitter, ev)
+		_M.emit_destroy(emitter, ev, reason)
 	end
 end
 
-function _M.emit_destroy(emitter, ev)
+function _M.emit_destroy(emitter, ev, reason)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'destroy', emitter)
+		coroutine.resume(co, 'destroy', emitter, reason)
 	end
 end	
 
@@ -301,6 +301,11 @@ function _M.emit_write(io)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, 'write', ev)
 	end
+end
+
+function _M.add_io_events(io)
+	_M.add_read_to(io)
+	_M.add_write_to(io)
 end
 
 return _M

@@ -6,6 +6,8 @@ local lock = require 'pulpo.lock'
 local loader = require 'pulpo.loader'
 local shmem = require 'pulpo.shmem'
 local log = require 'pulpo.logger'
+local exception = require 'pulpo.exception'
+local raise = exception.raise
 -- these are initialized after thread module initialization
 local signal
 local errno
@@ -20,6 +22,25 @@ local _M = {}
 local C = ffi.C
 local PT = C
 local ffi_state
+
+-- exception
+exception.define('pthread')
+exception.define('lua', {
+	message = function (t)
+		return ("%s:%d:%s"):format(t.args[1], t.args[2], lua_tolstring(t.args[3], -1, nil))
+	end,
+})
+
+local function call_pthread(ret, ...)
+	if ret ~= 0 then
+		raise("pthread", ...)
+	end
+end
+local function call_lua(ret, L, func)
+	if ret ~= 0 then
+		raise("lua", func, ret, L)
+	end
+end
 
 -- cdefs
 ffi.cdef [[
@@ -101,9 +122,11 @@ function _M.init_cdef(cache)
 			init = function (t)
 				t.size, t.used = tonumber(util.n_cpu()), 0
 				pulpo_assert(t.size > 0)
-				t.list = pulpo_assert(memory.alloc_typed("pulpo_thread_handle_t*", t.size), 
-					"fail to allocate thread list")
-				assert(0 == PT.pthread_mutex_init(t.mtx, nil), "mutex_init fail:"..ffi.errno())
+				t.list = memory.alloc_typed("pulpo_thread_handle_t*", t.size)
+				if t.list == ffi.NULL then
+					raise("malloc", "pulpo_thread_handle_t*", t.size)
+				end
+				call_pthread(PT.pthread_mutex_init(t.mtx, nil), "mutex_init fail", ffi.errno())
 				t.initial_cdecl = memory.strdup(
 					parser.inject(ffi.main_ffi_state.tree, INITIAL_REQUIRED_CDECL)
 				)
@@ -212,9 +235,9 @@ function _M.init_cdef(cache)
 		__newindex = function (t, k, v)
 			return t.list:write(function (data, name, value)
 				local elem = data:put(k, function (e)
-					assert(0 == PT.pthread_key_create(e.data.key, nil), "fail to key_create:"..ffi.errno())
+					call_pthread(PT.pthread_key_create(e.data.key, nil), "key_create", ffi.errno())
 				end)
-				assert(0 == PT.pthread_setspecific(elem.key[0], value), "fail to setspecific:"..ffi.errno())
+				call_pthread(PT.pthread_setspecific(elem.key[0], value), "setspecific", ffi.errno())
 				return elem
 			end, k, v)
 		end,
@@ -377,12 +400,9 @@ function _M.create(proc, args, opaque, debug)
 		util.sprintf("%08x", 16, th)
 	))
 	if r ~= 0 then
-		pulpo_assert(false, "luaL_loadstring:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
+		call_lua(r, L, "luaL_loadstring")
 	end
-	r = C.lua_pcall(L, 0, 1, 0)
-	if r ~= 0 then
-		pulpo_assert(false, "lua_pcall:" .. tostring(r) .. "|" .. ffi.string(C.lua_tolstring(L, -1, nil)))
-	end
+	call_lua(C.lua_pcall(L, 0, 1, 0), L, "lua_pcall")
 
 	C.lua_getfield(L, LUA_GLOBALSINDEX, "__mainloop__")
 	local mainloop = C.lua_tointeger(L, -1)

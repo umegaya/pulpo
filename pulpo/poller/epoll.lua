@@ -69,15 +69,15 @@ function io_index.init(t, poller, fd, type, ctx)
 	t.rpoll = 0
 	t.wpoll = 0
 	t.opened = 1
-	event.add_read_to(t)
-	event.add_write_to(t)
+	event.add_io_events(t)
 end
 function io_index.initialized(t)
 	return t.opened ~= 0
 end
-function io_index.fin(t)
+function io_index.fin(t, reason)
 	if t:initialized() then
 		t.opened = 0
+		event.destroy(t, reason)
 		-- if we does not use dup(), no need to remove fd from epoll fd.
 		-- so in pulpo, I don't use dup.
 		-- if 3rdparty lib use dup(), please do it in gc_handler XD

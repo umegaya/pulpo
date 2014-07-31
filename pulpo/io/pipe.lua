@@ -3,6 +3,7 @@ local socket = require 'pulpo.socket'
 local poller = require 'pulpo.poller'
 local loader = require 'pulpo.loader'
 local errno = require 'pulpo.errno'
+local raise = (require 'pulpo.exception').raise
 
 local _M = {}
 local C = ffi.C
@@ -27,7 +28,7 @@ local function pipe_read(io, ptr, len)
 			io:wait_read()
 			goto retry
 		else
-			error(('tcp read fails(%d) on %d'):format(eno, io:nfd()))
+			raise('syscall', 'read', eno, io:nfd())
 		end
 	end
 	return n
@@ -45,9 +46,9 @@ local function pipe_write(io, ptr, len)
 			io:wait_write()
 			goto retry
 		elseif eno == EPIPE then
-			error(('pipe write fails(peer closed) on %d'):format(eno, io:fd()))
+			raise('pipe')
 		else
-			error(('pipe write fails(%d) on %d'):format(eno, io:fd()))
+			raise('syscall', 'write', eno, io:fd())
 		end
 	end
 	return n
@@ -68,14 +69,14 @@ function _M.new(p, fds, ctx, opts)
 	if not fds then
 		fds = ffi.new('int[2]')
 		if C.pipe(fds) ~= 0 then
-			error('fail to create pipe:'..ffi.errno())
+			raise('syscall', 'pipe', ffi.errno())
 		end
 	end
 	if socket.setsockopt(fds[0], opts) < 0 then
-		error('fail to configure read pipe:'..ffi.errno())
+		raise('syscall', 'setsockopt', ffi.errno())
 	end
 	if socket.setsockopt(fds[1], opts) < 0 then
-		error('fail to configure writes pipe:'..ffi.errno())
+		raise('syscall', 'setsockopt', ffi.errno())
 	end
 	return p:newio(fds[0], HANDLER_TYPE_RPIPE, ctx), 
 			p:newio(fds[1], HANDLER_TYPE_WPIPE, ctx)
