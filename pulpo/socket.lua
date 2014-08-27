@@ -323,6 +323,15 @@ function _M.getifaddr(ifname)
 	end
 	local pifa = ppifa[0]
 	local addr,mask
+	if not ifname then
+		if ffi.os == "OSX" then
+			ifname = "en0"
+		elseif ffi.os == "Linux" then
+			ifname = "eth0"
+		else
+			raise("invalid", "os", ffi.os)
+		end
+	end 
 	if type(ifname) == 'string' then
 		while pifa ~= ffi.NULL do
 			if ffi.string(pifa.ifa_name) == ifname then

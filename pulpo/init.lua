@@ -239,6 +239,7 @@ function _M.run(opts, executable)
 	_M.initialize(opts)
 
 	local n_core = opts.n_core or util.n_cpu()
+	_M.n_core = n_core
 	if opts.exclusive then
 		-- -1 for this thread (also run as worker)
 		n_core = n_core - 1

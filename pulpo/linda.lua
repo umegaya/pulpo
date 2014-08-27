@@ -12,6 +12,9 @@ ffi.cdef [[
 	typedef struct pulpo_pipe {
 		int fds[2];
 	} pulpo_pipe_t;
+	typedef struct pulpo_pipe_io {
+		pulpo_io_t *io[2];
+	} pulpo_pipe_io_t;
 ]]
 ffi.cdef (([[
 	typedef struct pulpo_linda_t {
@@ -21,25 +24,32 @@ ffi.cdef (([[
 
 local channel_mt = {}
 function channel_mt.read(t, ptr, len)
-	return t[1]:read(ptr, len)
+	return t.io[0]:read(ptr, len)
 end
 function channel_mt.write(t, ptr, len)
-	return t[2]:write(ptr, len)
+	return t.io[1]:write(ptr, len)
 end
 function channel_mt.close(t)
-	t[1]:close()
-	t[2]:close()
+	t.io[0]:close()
+	t.io[1]:close()
+end
+function channel_mt.fd(t)
+	return t.io[0]:fd()
 end
 function channel_mt.event(t, event)
 	if event == 'write' then
-		return t[2]:event(event)
+		return t.io[1]:event(event)
 	elseif event == 'read' then
-		return t[1]:event(event)
+		return t.io[0]:event(event)
 	else
 		error('unsupported event:'..event)
 	end
 end
+ffi.metatype('pulpo_pipe_io_t', {
+	__index = channel_mt
+})
 
+local linda_cache = {}
 ffi.metatype('pulpo_linda_t', {
 	__index = {
 		init = function (t)
@@ -53,17 +63,21 @@ ffi.metatype('pulpo_linda_t', {
 			end)
 		end,
 		channel = function (t, poller, k, opts)
-			local p = t.channels:touch(function (data, key)
-				return data:put(key, function (entry)
-					if C.pipe(entry.data.fds) ~= 0 then
-						error('cannot create pipe:'..ffi.errno())
-					end	
-				end)
-			end, tostring(k))
-			logger.info(k, 'fds:', p.fds[0], p.fds[1])
-			return setmetatable({pipe.new(poller, p.fds, nil, opts)}, {
-				__index = channel_mt,
-			})
+			local pio = linda_cache[k]
+			if not pio then
+				local p = t.channels:touch(function (data, key)
+					return data:put(key, function (entry)
+						if C.pipe(entry.data.fds) ~= 0 then
+							error('cannot create pipe:'..ffi.errno())
+						end	
+					end)
+				end, tostring(k))
+				logger.info(k, 'fds:', p.fds[0], p.fds[1])
+				pio = ffi.new('pulpo_pipe_io_t')
+				pio.io[0],pio.io[1] = pipe.new(poller, p.fds, nil, opts)
+				linda_cache[k] = pio
+			end
+			return pio
 		end
 	},
 })
