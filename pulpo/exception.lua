@@ -35,8 +35,7 @@ local function make_exception(name, decl)
 	return tmp2
 end
 
-local new
-new = function (name, bt, ...)
+function _M.new(name, bt, ...)
 	local decl = exceptions[name]
 	if not decl then
 		_M.raise("not_found", "exception", name)
@@ -52,15 +51,16 @@ end
 
 function _M.raise(name, ...)
 	if _M.debug then
-		local e = new(name, debug.traceback(), ...)
+		local e = _M.new(name, debug.traceback(), ...)
 		logger.error(tostring(e))
 		error(e)
 	else
-		error(new(name, debug.traceback(), ...))
+		error(_M.new(name, debug.traceback(), ...))
 	end
 end
 
 _M.define('not_found')
+_M.define('invalid')
 _M.define('malloc', {
 	message = function (t)
 		if t.args[2] then

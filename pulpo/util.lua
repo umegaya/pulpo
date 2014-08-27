@@ -172,6 +172,10 @@ function _M.clock()
 	C.gettimeofday(_M.tval, nil)
 	return tonumber(_M.tval[0].tv_sec) + (tonumber(_M.tval[0].tv_usec) / 1000000)
 end
+function _M.clock_pair()
+	C.gettimeofday(_M.tval, nil)
+	return _M.tval[0].tv_sec, _M.tval[0].tv_usec
+end
 --> transfer executable information through string
 function _M.decode_proc(code)
 	local executable
