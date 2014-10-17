@@ -11,9 +11,9 @@ local _M = {}
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
-	"fcntl", "dup", "read", "write",  
-	"getifaddrs", "freeifaddrs", 
-	"pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
+	"fcntl", "dup", "read", "write", "writev", "sendfile", 
+	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
+	"struct iovec", "pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
 if ffi.os == "Linux" then
 	-- enum declaration required
@@ -37,6 +37,7 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 	}, 
 }, nil, [[
 	#include <sys/socket.h>
+	#include <sys/uio.h>
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#include <unistd.h>
@@ -72,7 +73,7 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 ]])
 
 -- TODO : current 'inet_namebyhost' implementation assumes binary layout of sockaddr_in and sockaddr_in6, 
--- is the same at first 4 byte (sa_family and sin_port) 
+-- is same at first 4 byte (sa_family and sin_port) 
 pulpo_assert(ffi.offsetof('struct sockaddr_in', 'sin_family') == ffi.offsetof('struct sockaddr_in6', 'sin6_family'))
 pulpo_assert(ffi.offsetof('struct sockaddr_in', 'sin_port') == ffi.offsetof('struct sockaddr_in6', 'sin6_port'))
 
@@ -302,18 +303,38 @@ function _M.inet_hostbyname(addr, addrp, socktype)
 	end
 	return r, af, socktype, protocol
 end
-function _M.inet_namebyhost(addrp, dst, len)
+function _M.inet_namebyhost(addrp, withport, dst, len)
 	if not dst then
 		dst = ffi.new('char[256]')
 		len = 256
 	end
-	local sa = ffi.cast('struct sockaddr_in*', addrp)
+	local sa = ffi.cast('struct sockaddr*', addrp)
 	local p = C.inet_ntop(sa.sin_family, addrp, dst, len)
 	if p == ffi.NULL then
 		return "invalid addr data"
 	else
-		return ffi.string(dst)..":"..tostring(_M.ntohs(sa.sin_port))
+		return ffi.string(dst)..(withport and (":"..tostring(_M.ntohs(sa.sin_port))) or "")
 	end
+end
+function _M.inet_peerbyfd(fd, dst, len)
+	if not dst then
+		dst = ffi.cast('struct sockaddr*', memory.alloc(ffi.sizeof('pulpo_addrinfo_t')))
+		len = ffi.sizeof('pulpo_addrinfo_t')
+	end
+	if C.getpeername(fd, sa, len) ~= 0 then
+		return nil
+	end
+	return sa
+end
+function _M.inet_namebyfd(fd, dst, len)
+	if not dst then
+		dst = ffi.cast('struct sockaddr*', memory.alloc(ffi.sizeof('pulpo_addrinfo_t')))
+		len = ffi.sizeof('pulpo_addrinfo_t')
+	end
+	if C.getsockname(fd, sa, len) ~= 0 then
+		return nil
+	end
+	return sa
 end
 
 function _M.getifaddr(ifname)

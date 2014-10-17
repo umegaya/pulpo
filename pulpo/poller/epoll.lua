@@ -104,6 +104,12 @@ function io_index.write_yield(t)
 		t.rpoll = 1
 	end
 end
+function io_index.reactivate_write(t)
+	t.ev.events = bit.bor(EPOLLIN, EPOLLET)
+	t:activate(t.p)
+	t.wpoll = 0
+	t:write_yield()
+end
 function io_index.emit_io(t, ev)
 	-- print('emit_io', t:fd(), ev.events)
 	if bit.band(ev.events, EPOLLIN) ~= 0 then

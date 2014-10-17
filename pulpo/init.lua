@@ -41,7 +41,7 @@ _M.event = event
 _M.util = util
 _M.shared_memory = thread.shared_memory
 
-local function create_opaque(fn, group, noloop)
+local function create_opaque(fn, group, init_fn, noloop)
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	-- generate unique seed
 	r.id = _M.id_seed:write(function (data)
@@ -56,6 +56,11 @@ local function create_opaque(fn, group, noloop)
 		r.proc = memory.strdup(proc)
 		r.plen = #proc
 	end
+	if init_fn then
+		local init_proc = util.encode_proc(init_fn)
+		r.init_proc = memory.strdup(init_proc)
+		r.init_plen = #init_proc
+	end
 	return r
 end
 
@@ -64,10 +69,10 @@ local function destroy_opaque(opq)
 	memory.free(opq)
 end
 
-local function init_opaque()
+local function init_opaque(opts)
 	local opaque = thread.opaque(thread.me, "pulpo_opaque_t*")
 	if opaque == ffi.NULL then
-		opaque = create_opaque(nil, "root")
+		opaque = create_opaque(nil, "root", opts.init_proc)
 		thread.set_opaque(thread.me, opaque)
 	end
 	opaque.poller = _M.evloop.poller -- it is wrapped.
@@ -86,8 +91,8 @@ local function init_cdef()
 			unsigned short id;
 			unsigned char noloop, padd;
 			char *group;
-			char *proc;
-			size_t plen;
+			char *proc, *init_proc;
+			size_t plen, init_plen;
 			pulpo_poller_t *poller;
 		} pulpo_opaque_t;
 	]]
@@ -116,6 +121,11 @@ local function create_thread(exec, group, arg, noloop)
 		local memory = require 'pulpo.memory'
 		local opaque = pulpo.init_worker()
 		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
+		if opaque.init_proc ~= ffi.NULL then
+			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
+			init_proc()
+			memory.free(opaque.init_proc)
+		end
 		_G.ffi = ffi
 		_G.pulpo = pulpo
 		memory.free(opaque.proc)
@@ -162,8 +172,8 @@ function _M.wrap_poller(p)
 				if k == "linda" then
 					local linda = require 'pulpo.linda'
 					v = {
-						new = function (name)
-							return linda:channel(t.__poller, name)
+						new = function (name, opts)
+							return linda:channel(t.__poller, name, opts)
 						end
 					}
 				elseif k == "poller" then
@@ -207,7 +217,7 @@ function _M.initialize(opts)
 		init_lazy_module()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
-		init_opaque()
+		init_opaque(opts)
 		_M.initialized = true
 	end
 	return _M

@@ -105,14 +105,17 @@ function _M.erastic_map(type, name)
 				t.used = 0
 				t.list = memory.alloc_fill_typed(elemtype, t.size)
 			end,
+			delete = function (t, e)
+				memory.free(e.name)
+				local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
+				if ok then
+					e.data:fin()
+				end
+			end,
 			fin = function (t)
 				for i=0,t.used-1,1 do
 					local e = t.list[i]
-					memory.free(e.name)
-					local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
-					if ok then
-						e.data:fin()
-					end
+					t:delete(e)
 				end
 				memory.free(t.list)
 			end,
@@ -130,7 +133,7 @@ function _M.erastic_map(type, name)
 			get = function (t, name)
 				return t:put(name)
 			end,
-			put = function (t, name, init)
+			put = function (t, name, init, ...)
 				t:reserve(1) -- at least 1 entry room
 				local e
 				for i=0,t.used-1,1 do
@@ -144,13 +147,29 @@ function _M.erastic_map(type, name)
 				end
 				e = t.list[t.used]
 				e.name = memory.strdup(name)
-				init(e)
+				init(e, ...)
 				t.used = (t.used + 1)
 				return e.data
+			end,
+			remove = function (t, name)
+				local e, found
+				for i=0,t.used-1,1 do
+					e = t.list[i]
+					if ffi.string(e.name) == name then
+						found = true
+					elseif found then
+						ffi.copy(t.list[i - 1], t.list[i])
+					end
+				end
+				e = t.list[t.used]
+				t:delete(e)
+				t.used = (t.used - 1)
 			end,
 		}
 	}, name)
 end
+-- TODO : replace fast hash map implementation for the case of map has > 10k entries
+_M.erastic_hash_map = _M.erastic_map
 
 -- rwlock pointer
 local rwlock_ptr_name_tag = "%s_rwlock_ptr_t"

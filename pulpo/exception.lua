@@ -10,6 +10,12 @@ local default_methods = {
 	message = function (t)
 		return table.concat(t.args, ",")
 	end,
+	is = function (t, name)
+		return t.name == name
+	end,
+	like = function (t, pattern)
+		return t.name:match(pattern)
+	end,
 }
 local default_metamethods = {
 	__tostring = function (t)

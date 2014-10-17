@@ -147,6 +147,16 @@ local function tcp_writev(io, vec, vlen)
 	return n
 end
 
+local function tcp_writef(io, in_fd, offset_p, count)
+::retry::
+	local n = C.sendfile(io:fd(), in_fd, offset_p, count)
+	if n < 0 then
+		on_write_error(io)
+		goto retry
+	end
+	return n
+end
+
 local ctx
 local function tcp_accept(io)
 ::retry::
@@ -182,7 +192,7 @@ local function tcp_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc)
+HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_writev, tcp_writef)
 HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tcp_gc)
 
 function _M.connect(p, addr, opts)

@@ -370,6 +370,16 @@ function _M.fin_worker(thread, on_finalize)
 	memory.free(thread)
 end
 
+local function export_cmdl_args()
+	local tmp = "{"
+	if _G.arg then
+		for _,s in ipairs(_G.arg) do
+			tmp = (tmp .. ("'%q',"):format(s))
+		end
+	end
+	return tmp.."}"
+end
+
 -- create thread. args must be cast-able as void *.
 -- TODO : more graceful error handling (now only assert)
 function _M.create(proc, args, opaque, debug)
@@ -394,10 +404,12 @@ function _M.create(proc, args, opaque, debug)
 	end
 	__mainloop__ = tonumber(ffi.cast("intptr_t", ffi.cast("void *(*)(void *)", mainloop)))
 	__at_exit__ = tonumber(ffi.cast("intptr_t", ffi.cast("void (*)(void)", thread.at_exit)))
+	_G.arg = %s
 	]]):format(
 		debug and "true" or "false", 
 		string.dump(proc), 
-		util.sprintf("%08x", 16, th)
+		util.sprintf("%08x", 16, th),
+		export_cmdl_args()
 	))
 	if r ~= 0 then
 		call_lua(r, L, "luaL_loadstring")

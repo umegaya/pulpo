@@ -53,6 +53,14 @@ function _M.merge_table(t1, t2)
 	return t1
 end
 
+function _M.copy_table(t, deep)
+	local r = {}
+	for k,v in pairs(t) do
+		r[k] = (deep and type(v) == 'table') and _M.copy_table(v) or v
+	end
+	return r
+end
+
 --> ffi related utils
 local C = ffi.C
 local RLIMIT_NOFILE, RLIMIT_CORE
