@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local C = ffi.C
 local PT = C
 
@@ -115,7 +115,7 @@ end
 
 local function create_thread(exec, group, arg, noloop)
 	return thread.create(function (arg)
-		local ffi = require 'ffiex'
+		local ffi = require 'ffiex.init'
 		local pulpo = require 'pulpo.init'
 		local util = require 'pulpo.util'
 		local memory = require 'pulpo.memory'

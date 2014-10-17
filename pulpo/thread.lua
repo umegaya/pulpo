@@ -1,5 +1,5 @@
 --package.path=("../ffiex/?.lua;" .. package.path)
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
 local lock = require 'pulpo.lock'
@@ -389,7 +389,7 @@ function _M.create(proc, args, opaque, debug)
 	C.luaL_openlibs(L)
 	local r = C.luaL_loadstring(L, ([[
 	_G.DEBUG = %s
-	local ffi = require 'ffiex'
+	local ffi = require 'ffiex.init'
 	local thread = require 'pulpo.thread'
 	local memory = require 'pulpo.memory'
 	local main = loadstring(%q, '%s')

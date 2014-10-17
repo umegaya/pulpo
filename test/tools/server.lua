@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local pulpo = require 'pulpo.init'
 local tentacle = pulpo.tentacle
 local tcp = require 'pulpo.io.tcp'

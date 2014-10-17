@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 
 local g = pulpo.evloop.clock.new(0.05, 10)
 

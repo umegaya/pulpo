@@ -1,5 +1,5 @@
 -- actor main loop
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'

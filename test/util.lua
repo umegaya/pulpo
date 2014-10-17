@@ -2,7 +2,7 @@ local thread = require 'pulpo.thread'
 thread.initialize()
 local util = require 'pulpo.util'
 local socket = require 'pulpo.socket'
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 
 local addr, mask
 if ffi.os == "OSX" then

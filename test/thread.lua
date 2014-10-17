@@ -1,5 +1,5 @@
 -- package.path = ("../ffiex/?.lua;" .. package.path)
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 --ffi.__DEBUG_CDEF__ = true
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
