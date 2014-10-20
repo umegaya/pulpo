@@ -38,6 +38,7 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 }, nil, [[
 	#include <sys/socket.h>
 	#include <sys/uio.h>
+	#include <sys/sendfile.h>
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#include <unistd.h>

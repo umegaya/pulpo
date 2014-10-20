@@ -72,7 +72,7 @@ end
 local function init_opaque(opts)
 	local opaque = thread.opaque(thread.me, "pulpo_opaque_t*")
 	if opaque == ffi.NULL then
-		opaque = create_opaque(nil, "root", opts.init_proc)
+		opaque = create_opaque(nil, "root", opts and opts.init_proc or nil)
 		thread.set_opaque(thread.me, opaque)
 	end
 	opaque.poller = _M.evloop.poller -- it is wrapped.

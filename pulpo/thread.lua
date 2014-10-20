@@ -211,27 +211,24 @@ function _M.init_cdef(cache)
 			%s list;
 		} pulpo_tls_list_t;
 	]]):format(gen.rwlock_ptr(gen.erastic_map('pulpo_tls_t'))))
+	local cachelist = {}
 	ffi.metatype('pulpo_tls_list_t', {
-		__index = setmetatable({
-			init = function (t)
-				t.list:init(function (data) data:init() end)
-			end,
-			fin = function (t)
-				t.list:fin(function (data) data:fin() end)
-			end,
-			cache = {},
-		}, {
-			__index = function (t, k)
-				local v = t.cache[k]
-				if not v then
-					v = t.list:read(function (data)
-						return data:get(k)
-					end)
-					rawset(t.cache, k, v)
-				end
-				return v and PT.pthread_getspecific(v.key[0]) or nil
-			end,
-		}), 
+		__index = function (t, k)
+			local ck = tostring(t)
+			local cache = cachelist[ck]
+			if not cache then
+				cache = {}
+				cachelist[ck] = cache
+			end
+			local v = cache[k]
+			if not v then
+				v = t.list:read(function (data)
+					return data:get(k)
+				end)
+				rawset(cache, k, v)
+			end
+			return v and PT.pthread_getspecific(v.key[0]) or nil
+		end,
 		__newindex = function (t, k, v)
 			return t.list:write(function (data, name, value)
 				local elem = data:put(k, function (e)
@@ -269,9 +266,9 @@ local function setup_shmem_args(shmemp)
 	end)
 	_M.tls = shmemp:find_or_init('tls', function ()
 		-- pulpo_tls_list_t is already initialized init_cdef (above)
-		local list = memory.alloc_typed('pulpo_tls_list_t')
-		list:init()
-		return "pulpo_tls_list_t", list
+		local tlses = memory.alloc_typed('pulpo_tls_list_t')
+		tlses.list:init(function (data) data:init() end)
+		return "pulpo_tls_list_t", tlses
 	end)
 end
 local initializers = {}
@@ -347,6 +344,7 @@ function _M.finalize()
 		memory.free(_threads)
 		loader.finalize()
 		lock.finalize()
+		shmem.finalize()
 	end
 end
 -- release thread local resources. each worker need to call this

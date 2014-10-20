@@ -187,6 +187,10 @@ function _M.rwlock_ptr(type, name)
 				if ctor then t:write(ctor, ...) end
 			end,
 			fin = function (t, fzr)
+				if fzr == nil then 
+					local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
+					if ok then fzr = fn end
+				end
 				if fzr then t:write(fzr) end
 				PT.pthread_rwlock_destroy(t.lock)
 			end,
@@ -232,6 +236,10 @@ function _M.mutex_ptr(type, name)
 				if ctor then t:touch(ctor, ...) end
 			end,
 			fin = function (t, fzr)
+				if fzr == nil then 
+					local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
+					if ok then fzr = fn end
+				end
 				if fzr then t:touch(fzr) end
 				PT.pthread_mutex_destroy(t.lock)
 			end,
