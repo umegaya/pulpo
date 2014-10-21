@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local loader = require 'pulpo.loader'
@@ -119,6 +119,13 @@ function io_index.write_yield(t)
 		t:add_to(t.p)
 		t.wpoll = 1
 	end
+end
+function io_index.reactivate_write(t)
+	t.ev.filter = EVFILT_WRITE
+	t:remove_from_poller(t)
+	t.wpoll = 0
+	t.ev.flags = bit.bor(EV_ADD, EV_CLEAR)
+	t:write_yield()
 end
 function io_index.emit_io(t, ev)
 	if ev.filter == EVFILT_WRITE then

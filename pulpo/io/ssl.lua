@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local poller = require 'pulpo.poller'
 local thread = require 'pulpo.thread'
 local loader = require 'pulpo.loader'

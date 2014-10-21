@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 
@@ -51,6 +51,14 @@ function _M.merge_table(t1, t2)
 		t1[k] = v
 	end
 	return t1
+end
+
+function _M.copy_table(t, deep)
+	local r = {}
+	for k,v in pairs(t) do
+		r[k] = (deep and type(v) == 'table') and _M.copy_table(v) or v
+	end
+	return r
 end
 
 --> ffi related utils
@@ -171,6 +179,10 @@ end
 function _M.clock()
 	C.gettimeofday(_M.tval, nil)
 	return tonumber(_M.tval[0].tv_sec) + (tonumber(_M.tval[0].tv_usec) / 1000000)
+end
+function _M.clock_pair()
+	C.gettimeofday(_M.tval, nil)
+	return _M.tval[0].tv_sec, _M.tval[0].tv_usec
 end
 --> transfer executable information through string
 function _M.decode_proc(code)

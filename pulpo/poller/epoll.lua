@@ -1,5 +1,5 @@
 local loader = require 'pulpo.loader'
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local errno = require 'pulpo.errno'
@@ -103,6 +103,12 @@ function io_index.write_yield(t)
 		t.wpoll = 1
 		t.rpoll = 1
 	end
+end
+function io_index.reactivate_write(t)
+	t.ev.events = bit.bor(EPOLLIN, EPOLLET)
+	t:activate(t.p)
+	t.wpoll = 0
+	t:write_yield()
 end
 function io_index.emit_io(t, ev)
 	-- print('emit_io', t:fd(), ev.events)

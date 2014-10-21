@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 -- ffi.__DEBUG_CDEF__ = true
 local loader = require 'pulpo.loader'
 loader.debug = true

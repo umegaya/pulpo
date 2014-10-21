@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 if ffi.os == "OSX" then
 	return true
 end

@@ -1,4 +1,4 @@
-local ffi = require 'ffiex'
+local ffi = require 'ffiex.init'
 local _M = {}
 local C = ffi.C
 
@@ -21,6 +21,7 @@ ffi.cdef [[
 	void free(void *);
 	void *realloc(void *, size_t);
 	char *strdup(const char *);
+	void *memmove(void *, const void *, size_t);
 ]]
 
 function _M.alloc_fill(sz, fill)
