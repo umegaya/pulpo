@@ -1,90 +1,84 @@
-local thread = require 'pulpo.thread'
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
+local thread = require 'pulpo.thread'
+
+local require_on_boot = (require 'pulpo.package').require
+local loader = require_on_boot 'pulpo.loader'
 
 local C = ffi.C
-local _M = {}
+local _M = (require 'pulpo.package').module('pulpo.signal')
 local ffi_state, PT
 
-local SIG_IGN
-local SA_RESTART, SA_SIGINFO
-local SIGMASK_OP
-
-thread.add_initializer(function (loader, shmem)
-	loader.load("signal.lua", {
-		"signal", "sigaction", "func sigaction", 
-		"sigemptyset", "sigaddset", "sig_t", 
-	}, {
-		"SIGHUP", "SIGPIPE", "SIGKILL", "SIGALRM", "SIGSEGV", 
-		"SA_RESTART", "SA_SIGINFO", 
-		"SIG_BLOCK", "SIG_UNBLOCK", "SIG_SETMASK",  
-		regex = {
-			"^SIG%w+"
-		}
-	}, nil, [[
-		#include <signal.h>
-	]])
-	ffi_state, PT = loader.load("pthread_signal.lua", {
-		"pthread_sigmask"
-	}, {}, thread.PTHREAD_LIB_NAME, [[
-		#include <signal.h>
-	]])
-
-	--> that is really disappointing, but macro SIG_IGN is now cannot processed correctly. 
-	SIG_IGN = ffi.cast("sig_t", 1)
-	SA_RESTART = ffi.defs.SA_RESTART
-	SA_SIGINFO = ffi.defs.SA_SIGINFO
-	SIGMASK_OP = {
-		add = ffi.defs.SIG_BLOCK,
-		del = ffi.defs.SIG_UNBLOCK,
-		set = ffi.defs.SIG_SETMASK
+loader.load("signal.lua", {
+	"signal", "sigaction", "func sigaction", 
+	"sigemptyset", "sigaddset", "sig_t", 
+}, {
+	"SIGHUP", "SIGPIPE", "SIGKILL", "SIGALRM", "SIGSEGV", 
+	"SA_RESTART", "SA_SIGINFO", 
+	"SIG_BLOCK", "SIG_UNBLOCK", "SIG_SETMASK",  
+	regex = {
+		"^SIG%w+"
 	}
+}, nil, [[
+	#include <signal.h>
+]])
+ffi_state, PT = loader.load("pthread_signal.lua", {
+	"pthread_sigmask"
+}, {}, thread.PTHREAD_LIB_NAME, [[
+	#include <signal.h>
+]])
 
-	local function faultaddr(si)
-		if ffi.os == "OSX" then
-			return si.si_addr
-		elseif ffi.os == "Linux" then
-			return si._sifields._sigfault.si_addr
-		else
-			pulpo_assert(false, "unsupported OS:"..ffi.os)
-		end
-	end
-	local sighandler_t
+--> that is really disappointing, but macro SIG_IGN is now cannot processed correctly. 
+local SIG_IGN = ffi.cast("sig_t", 1)
+local SA_RESTART = ffi.defs.SA_RESTART
+local SA_SIGINFO = ffi.defs.SA_SIGINFO
+local SIGMASK_OP = {
+	add = ffi.defs.SIG_BLOCK,
+	del = ffi.defs.SIG_UNBLOCK,
+	set = ffi.defs.SIG_SETMASK
+}
+
+--> determine correct sighandler signature
+local sighandler_t
+if ffi.os == "OSX" then
+	sighandler_t = ffi.typeof('void (*)(int, struct __siginfo *, void *)')
+elseif ffi.os == "Linux" then
+	sighandler_t = ffi.typeof('void (*)(int, siginfo_t *, void *)')
+else
+	pulpo_assert(false, "unsupported OS:"..ffi.os)
+end
+--> and way to get fault address from siginfo.
+local function faultaddr(si)
 	if ffi.os == "OSX" then
-		sighandler_t = ffi.typeof('void (*)(int, struct __siginfo *, void *)')
+		return si.si_addr
 	elseif ffi.os == "Linux" then
-		sighandler_t = ffi.typeof('void (*)(int, siginfo_t *, void *)')
+		return si._sifields._sigfault.si_addr
 	else
 		pulpo_assert(false, "unsupported OS:"..ffi.os)
 	end
+end
 
-	_M.signal_handlers = {}
-	_M.original_signals = {}
-	local callback = ffi.cast(sighandler_t, function (sno, info, p)
-		-- print('sig handler(called):', _M.signal_handlers)
-		_M.signal_handlers[sno](sno, info, p)
-	end)
-	-- print('sig handler(init):', _M.signal_handlers, callback)
-	thread.tls.common_signal_handler = callback
-	_M.common_signal_handler = ffi.cast(sighandler_t, function (sno, info, p)
-		-- this may called from another 
-		ffi.cast(sighandler_t, thread.tls.common_signal_handler)(sno, info, p)
-	end)
-	thread.register_exit_handler("signal.lua", function ()
-		for signo, sa in pairs(_M.original_signals) do
-			logger.info('rollback signal', signo)
-			C.sigaction(signo, sa, nil)
-			memory.free(sa)
-		end
-	end)
-	-- show segv stacktrace. I understand that is unsafe. but if app is crushed by this, so what?
-	-- sooner or later it is crushed by illegal memory access. 
-	-- I want to bet small chance to get useful information about cause.
-	_M.signal("SIGSEGV", function (sno, info, p)
-		logger.fatal("SIGSEGV", faultaddr(info))
-		os.exit(-2)
-	end)
+--> setup signal handler exactly called from the thread which fault occurs
+_M.signal_handlers = {}
+thread.tls.common_signal_handler = ffi.cast(sighandler_t, function (sno, info, p)
+	-- print('sig handler(called):', _M.signal_handlers)
+	_M.signal_handlers[sno](sno, info, p)
+end)
+-- print('sig handler(init):', _M.signal_handlers, callback)
+
+_M.common_signal_handler = ffi.cast(sighandler_t, function (sno, info, p)
+	-- this may called from another 
+	ffi.cast(sighandler_t, thread.tls.common_signal_handler)(sno, info, p)
+end)
+
+_M.original_signals = {}
+thread.register_exit_handler("signal.lua", function ()
+	for signo, sa in pairs(_M.original_signals) do
+		logger.info('rollback signal', signo)
+		C.sigaction(signo, sa, nil)
+		memory.free(sa)
+	end
 end)
 
 function _M.makesigset(set, ...)
@@ -156,7 +150,8 @@ function _M.signal(signo, handler, optional_saflags)
 	return C.sigaction(signo, sa, ffi.NULL) ~= 0
 end
 
-return setmetatable(_M, {
+-- enable resolve signal value from signal macro symbol (like SIGSEGV)
+setmetatable(_M, {
 	__index = function (t, k)
 		local v = ffi_state.defs[k]
 		pulpo_assert(v, "no signal definition:"..k)
@@ -164,3 +159,13 @@ return setmetatable(_M, {
 		return v
 	end
 })
+
+-- show segv stacktrace. I understand that is unsafe. but if app is crushed by this, so what?
+-- sooner or later it is crushed by illegal memory access. 
+-- I want to bet small chance to get useful information about cause.
+_M.signal("SIGSEGV", function (sno, info, p)
+	logger.fatal("SIGSEGV", faultaddr(info))
+	os.exit(-2)
+end)
+
+return _M

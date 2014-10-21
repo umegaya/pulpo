@@ -12,9 +12,9 @@ if type == 'read' then
 		...
 	end
 elseif recv == 'close' then
-	pulpo_assert(object == io)
+	assert(object == io)
 elseif recv == 'shutdown' then
-	pulpo_assert(object == io2)
+	assert(object == io2)
 elseif recv == 'timeout' then
 	print('timeout')
 end
@@ -99,7 +99,7 @@ end
 
 function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
-	local ev = pulpo_assert(eventlist[id][type], "event not created "..type)
+	local ev = eventlist[id][type] -- assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
 		coroutine.resume(co, type, ev, ...)
 	end

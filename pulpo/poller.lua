@@ -3,15 +3,15 @@ local ffi = require 'ffiex.init'
 local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
-local fs = require 'pulpo.fs'
-local signal = require 'pulpo.signal'
 local event = require 'pulpo.event'
 local exception = require 'pulpo.exception'
 local raise = exception.raise
 
+local require_on_boot = (require 'pulpo.package').require
+local signal = require_on_boot 'pulpo.signal'
+
 -- ffi.__DEBUG_CDEF__ = true
-local log = require 'pulpo.logger'
-log.initialize()
+local log = (require 'pulpo.logger').initialize()
 if not _G.pulpo_assert then
 	_G.pulpo_assert = assert
 end

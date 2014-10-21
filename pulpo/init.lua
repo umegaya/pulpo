@@ -17,7 +17,7 @@ local function init_logger()
 	end)
 	_G.pulpo_assert = function (cond, msgobj)
 		if not cond then
-			logger.fatal(msgobj)
+			log.fatal(msgobj)
 			_G.error(msgobj, 0)
 		end
 		return cond
@@ -26,13 +26,15 @@ end
 init_logger()
 
 local thread = require 'pulpo.thread'
-local poller = require 'pulpo.poller'
 local memory = require 'pulpo.memory'
-local gen = require 'pulpo.generics'
-local util = require 'pulpo.util'
+local poller = require 'pulpo.poller'
 local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
-local socket -- lazy module
+local util = require 'pulpo.util'
+local gen = require 'pulpo.generics'
+
+local require_on_boot = (require 'pulpo.package').require
+local socket = require_on_boot 'pulpo.event'
 
 _M.poller = poller
 _M.tentacle = tentacle
@@ -107,10 +109,6 @@ local function init_shared_memory()
 		} pulpo_thread_idseed_t;
 	]]
 	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
-end
-
-local function init_lazy_module()
-	_M.socket = require 'pulpo.socket'
 end
 
 local function create_thread(exec, group, arg, noloop)
@@ -214,7 +212,6 @@ function _M.initialize(opts)
 		thread.initialize(opts)
 		poller.initialize(opts)
 		init_shared_memory()
-		init_lazy_module()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		init_opaque(opts)
@@ -235,7 +232,6 @@ function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
 		init_shared_memory()
-		init_lazy_module()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		_M.initialized = true

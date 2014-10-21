@@ -1,19 +1,16 @@
 local ffi = require 'ffiex.init'
-local thread = require 'pulpo.thread'
+local loader = require 'pulpo.loader'
 
-local _M = {}
-local ffi_state
+local _M = (require 'pulpo.package').module('pulpo.errno')
 
-thread.add_initializer(function (loader, shmem)
-	ffi_state = loader.load("errno.lua", {}, {
-		"EAGAIN", "EWOULDBLOCK", "ENOTCONN", "EINPROGRESS", "EPIPE", 
-		regex = {
-			"^E%w+"
-		}
-	}, nil, [[
-		#include <errno.h>
-	]])
-end)
+local ffi_state = loader.load("errno.lua", {}, {
+	"EAGAIN", "EWOULDBLOCK", "ENOTCONN", "EINPROGRESS", "EPIPE", 
+	regex = {
+		"^E%w+"
+	}
+}, nil, [[
+	#include <errno.h>
+]])
 
 function _M.errno()
 	return ffi.errno()

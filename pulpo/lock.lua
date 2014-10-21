@@ -1,8 +1,8 @@
 local ffi = require 'ffiex.init'
-local loader = require 'pulpo.loader'
 local memory = require 'pulpo.memory'
-
-local _M = {}
+local require_on_boot = (require 'pulpo.package').require
+local loader = require_on_boot 'pulpo.loader'
+local _M = (require 'pulpo.package').module('pulpo.lock')
 local C = ffi.C
 local ffi_state
 local PT = C
@@ -27,7 +27,7 @@ local function guard_clib_loader(mutex)
 end
 
 -- module function
-function _M.initialize(opts)
+function _M.initialize()
 	loader.load('lock.lua', {
 		"pthread_rwlock_t", 
 		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
@@ -47,17 +47,17 @@ function _M.initialize(opts)
 	)
 end
 
+function _M.init_worker(mutex, bootstrap_cdefs)
+	_M.bootstrap_cdefs = bootstrap_cdefs
+	ffi.cdef(ffi.string(bootstrap_cdefs)) -- contains pthread_**
+	guard_clib_loader(mutex)
+end
+
 function _M.finalize()
 	if _M.load_mutex then
 		_M.pthread_mutex_destroy(_M.load_mutex)
 		memory.free(_M.load_mutex)
 	end
-end
-
-function _M.init_worker(mutex, bootstrap_cdefs)
-	_M.bootstrap_cdefs = bootstrap_cdefs
-	ffi.cdef(ffi.string(bootstrap_cdefs)) -- contains pthread_**
-	guard_clib_loader(mutex)
 end
 
 return _M

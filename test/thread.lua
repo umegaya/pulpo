@@ -5,6 +5,7 @@ local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
 local thread = require 'pulpo.thread'
 local loader = require 'pulpo.loader'
+print(loader, loader.initialize, package, package.loaded["pulpo.loader"])
 
 thread.initialize({
 	cache_dir = './tmp'
