@@ -1,22 +1,25 @@
 --package.path=("../ffiex/?.lua;" .. package.path)
 local ffi = require 'ffiex.init'
 local parser = require 'ffiex.parser'
+
 local memory = require 'pulpo.memory'
-local lock = require 'pulpo.lock'
-local loader = require 'pulpo.loader'
-local shmem = require 'pulpo.shmem'
-local log = require 'pulpo.logger'
+local util = require 'pulpo.util'
 local exception = require 'pulpo.exception'
+local log = (require 'pulpo.logger').initialize()
+local gen = require 'pulpo.generics'
+local runlv = require 'pulpo.runlv'
 local raise = exception.raise
--- these are initialized after thread module initialization
-local signal
-local errno
-local util
-local gen
-log.initialize()
 if not _G.pulpo_assert then
 	_G.pulpo_assert = assert
 end
+
+local boot = require 'pulpo.package'
+local require_on_boot = boot.require
+local lock = require_on_boot 'pulpo.lock'
+local loader = require_on_boot 'pulpo.loader'
+local shmem = require_on_boot 'pulpo.shmem'
+local signal = require_on_boot 'pulpo.signal'
+local errno = require_on_boot 'pulpo.errno'
 
 local _M = {}
 local C = ffi.C
@@ -27,7 +30,7 @@ local ffi_state
 exception.define('pthread')
 exception.define('lua', {
 	message = function (t)
-		return ("%s:%d:%s"):format(t.args[1], t.args[2], lua_tolstring(t.args[3], -1, nil))
+		return ("%s:%d:%s"):format(t.args[1], t.args[2], C.lua_tolstring(t.args[3], -1, nil))
 	end,
 })
 
@@ -54,6 +57,7 @@ ffi.cdef [[
 ]]
 
 local LUA_GLOBALSINDEX
+local PTHREAD_CANCELED
 
 function _M.init_cdef(cache)
 	ffi.path(util.luajit_include_path())
@@ -84,6 +88,9 @@ function _M.init_cdef(cache)
 	]])
 
 	LUA_GLOBALSINDEX = loader.ffi_state.defs.LUA_GLOBALSINDEX
+	-- currently, ffiex cannot parse macro definition with cast operator.
+	PTHREAD_CANCELED = ffi.cast('void *', ffi.new('char*') + 1)
+	-- print(PTHREAD_CANCELED)
 
 	ffi.cdef [[
 		typedef struct pulpo_tls {
@@ -271,60 +278,44 @@ local function setup_shmem_args(shmemp)
 		return "pulpo_tls_list_t", tlses
 	end)
 end
-local initializers = {}
-local function init_modules(loader, shmemp)
-	for _,fn in ipairs(initializers) do
-		fn(loader, shmemp)
-	end
-end
-local function load_lazy_modules()
-	signal = require 'pulpo.signal'
-	errno = require 'pulpo.errno'
-	util = require 'pulpo.util'
-	gen = require 'pulpo.generics'
-end
-function _M.add_initializer(fn)
-	table.insert(initializers, fn)
-end
 function _M.initialize(opts)
-	local i = 0
 	opts = opts or { cache_dir = "/tmp/pulpo" }
-	load_lazy_modules()
 	-- create common cache dir
 	util.mkdir(opts.cache_dir)
 	-- initialize loader and its cache directory.
+	boot.init_modules(runlv.LOADER)
 	loader.initialize(opts, ffi.main_ffi_state)
-	util.mkdir(loader.cache_dir)
-	-- in main thread lock module requires loader module to setup ffi decls
-	lock.initialize(opts)
-	-- gen.initialize()
-	-- now gen (depends on pthread lock primitives) will be enable, shmem can be enabled
-	shmem.initialize(opts)
+	-- load and init lock module
+	boot.init_modules(runlv.GLOBAL_LOCK)
+	lock.initialize()
+	-- load and init shared memory module
+	boot.init_modules(runlv.SHARED_MEMORY)
 	_shared_memory = memory.alloc_typed('pulpo_shmem_t')
 	_shared_memory[0]:init()
 	-- pick (or init) all necessary shared memory object from loader and lock module
 	-- after that, loader.load can be callable with thread safety
 	setup_shmem_args(_shared_memory)
-	-- other module's initializer called
-	init_modules(loader, _shared_memory, opts)
+	-- load remain on-boot modules
+	boot.init_modules()
 	-- initialize pseudo thread handle of main thread
 	_M.me = memory.alloc_fill_typed("pulpo_thread_handle_t")
 	_M.me.pt = C.pthread_self()
 	_threads:insert(_M.me)
 end
 function _M.init_worker(arg)
-	load_lazy_modules()
-	-- in worker thread, all "loader" call will be protected by mutex, so init lock first
-	lock.init_worker(arg.mutex, arg.bootstrap_cdefs)
+	-- load loader (only ffi_state and flags) / lock
 	-- then initialize shared memory (after that, all module can get shared pointer through it)
-	shmem.init_worker()
-	_shared_memory = ffi.cast('pulpo_shmem_t*', arg.shmem)
-	-- initalize loader (only ffi_state and flags)
+	boot.init_modules(runlv.LOADER, runlv.GLOBAL_LOCK)
+	lock.init_worker(arg.mutex, arg.bootstrap_cdefs)
 	loader.init_worker(ffi.main_ffi_state)
-	-- setup values from shmem. now loader.load can be callable with thread safety
+	-- load and init shared memory module
+	boot.init_modules(runlv.SHARED_MEMORY)
+	_shared_memory = ffi.cast('pulpo_shmem_t*', arg.shmem)
+	-- pick (or init) all necessary shared memory object from loader and lock module
+	-- after that, loader.load can be callable with thread safety
 	setup_shmem_args(_shared_memory)
-	-- other module's initializer called
-	init_modules(loader, _shared_memory)
+	-- load remain on-boot modules
+	boot.init_modules()
 	-- initialize current thread handles
 	_M.me = ffi.cast("pulpo_thread_handle_t*", arg.handle)
 	-- wait for thread appears in global list
@@ -446,13 +437,16 @@ function _M.at_exit()
 	end
 	-- print('at_exit end')
 end
-function _M.join(thread, on_finalize)
+function _M.join(thread)
 	local rv = ffi.new("void*[1]")
 	PT.pthread_join(thread.pt, rv)
-	_M.fin_worker(thread, on_finalize)
-	return rv[0]
+	return rv[0], rv[0] == PTHREAD_CANCELED
 end
-_M.destroy = _M.join
+function _M.destroy(thread, on_finalize)
+	local rv, cancel = _M.join(thread)
+	_M.fin_worker(thread, on_finalize)
+	return rv
+end
 
 -- check 2 thread handles (pthread_t) are same 
 function _M.equal(t1, t2)

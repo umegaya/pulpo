@@ -1,12 +1,13 @@
-local loader = require 'pulpo.loader'
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
 local exception = require 'pulpo.exception'
+local require_on_boot = (require 'pulpo.package').require
+local loader = require_on_boot 'pulpo.loader'
 local raise = exception.raise
 
 local C = ffi.C
-local _M = {}
+local _M = (require 'pulpo.package').module('pulpo.socket')
 
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
@@ -15,30 +16,10 @@ local CDECLS = {
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
 	"struct iovec", "pulpo_bytes_op", "pulpo_sockopt_t", "pulpo_addrinfo_t", 
 }
-if ffi.os == "Linux" then
-	-- enum declaration required
-	table.insert(CDECLS, "enum __socket_type")
-end
-local ffi_state = loader.load("socket.lua", CDECLS, {
-	"AF_INET", "AF_INET6", "AF_UNIX", 
-	"SOCK_STREAM", 
-	"SOCK_DGRAM", 
-	"SOL_SOCKET", 
-		"SO_REUSEADDR", 
-		"SO_SNDTIMEO",
-		"SO_RCVTIMEO",
-		"SO_SNDBUF",
-		"SO_RCVBUF",
-	"F_GETFL",
-	"F_SETFL", 
-		"O_NONBLOCK",
-	nice_to_have = {
-		"SO_REUSEPORT",
-	}, 
-}, nil, [[
+local CHEADER = [[
 	#include <sys/socket.h>
 	#include <sys/uio.h>
-	#include <sys/sendfile.h>
+	%s
 	#include <arpa/inet.h>
 	#include <netdb.h>
 	#include <unistd.h>
@@ -70,8 +51,31 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 		};
 		socklen_t alen[1];
 	} pulpo_addrinfo_t;
-
-]])
+]]
+if ffi.os == "Linux" then
+	-- enum declaration required
+	table.insert(CDECLS, "enum __socket_type")
+	CHEADER = CHEADER:format("#include <sys/sendfile.h>")
+elseif ffi.os == "OSX" then
+	CHEADER = CHEADER:format("")
+end
+local ffi_state = loader.load("socket.lua", CDECLS, {
+	"AF_INET", "AF_INET6", "AF_UNIX", 
+	"SOCK_STREAM", 
+	"SOCK_DGRAM", 
+	"SOL_SOCKET", 
+		"SO_REUSEADDR", 
+		"SO_SNDTIMEO",
+		"SO_RCVTIMEO",
+		"SO_SNDBUF",
+		"SO_RCVBUF",
+	"F_GETFL",
+	"F_SETFL", 
+		"O_NONBLOCK",
+	nice_to_have = {
+		"SO_REUSEPORT",
+	}, 
+}, nil, CHEADER)
 
 -- TODO : current 'inet_namebyhost' implementation assumes binary layout of sockaddr_in and sockaddr_in6, 
 -- is same at first 4 byte (sa_family and sin_port) 

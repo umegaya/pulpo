@@ -17,7 +17,7 @@ local function init_logger()
 	end)
 	_G.pulpo_assert = function (cond, msgobj)
 		if not cond then
-			logger.fatal(msgobj)
+			log.fatal(msgobj)
 			_G.error(msgobj, 0)
 		end
 		return cond
@@ -26,13 +26,15 @@ end
 init_logger()
 
 local thread = require 'pulpo.thread'
-local poller = require 'pulpo.poller'
 local memory = require 'pulpo.memory'
-local gen = require 'pulpo.generics'
-local util = require 'pulpo.util'
+local poller = require 'pulpo.poller'
 local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
-local socket -- lazy module
+local util = require 'pulpo.util'
+local gen = require 'pulpo.generics'
+
+local require_on_boot = (require 'pulpo.package').require
+local socket = require_on_boot 'pulpo.event'
 
 _M.poller = poller
 _M.tentacle = tentacle
@@ -109,10 +111,6 @@ local function init_shared_memory()
 	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
-local function init_lazy_module()
-	_M.socket = require 'pulpo.socket'
-end
-
 local function create_thread(exec, group, arg, noloop)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex.init'
@@ -132,9 +130,11 @@ local function create_thread(exec, group, arg, noloop)
 		if opaque.noloop == 0 then
 			pulpo.tentacle(proc, arg)
 			pulpo.evloop:loop()
+			pulpo.thread.fin_worker()
 		else
 			proc(arg)
 		end
+		return ffi.NULL -- indicate graceful stop (not equal to PTHREAD_CANCELED)
 	end, arg or ffi.NULL, create_opaque(exec, group or "main", noloop))
 end
 
@@ -214,7 +214,6 @@ function _M.initialize(opts)
 		thread.initialize(opts)
 		poller.initialize(opts)
 		init_shared_memory()
-		init_lazy_module()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		init_opaque(opts)
@@ -235,7 +234,6 @@ function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
 		init_shared_memory()
-		init_lazy_module()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		_M.initialized = true
@@ -258,8 +256,13 @@ function _M.run(opts, executable)
 		create_thread(executable, opts.group, opts.arg, opts.noloop)
 	end
 	if opts.exclusive then
-		coroutine.wrap(util.create_proc(executable))(arg)
-		_M.evloop:loop()
+		if opts.noloop then
+			util.create_proc(executable)(arg)
+		else
+			coroutine.wrap(util.create_proc(executable))(arg)
+			_M.evloop:loop()
+			pulpo.thread.finalize()
+		end
 	end
 end
 
@@ -292,15 +295,35 @@ function _M.find_thread(group_or_id_or_filter)
 	end)
 end
 
+-- stop threads filtered with group or id or filter proc.
+-- this function will not take care the case which the thread called this function, need to be stopped.
+-- please check first retval and do graceful shutdown. (but if you do loop mode, it will do graceful shutdown instead of you)
 function _M.stop(group_or_id_or_filter)
-	for _,th in ipairs(_M.find_thread(group_or_id_or_filter)) do
-		-- th.L == NULL => main thread
-		if not th:main() then
+	local self_stopped, main_stopped
+	local stoplist = _M.find_thread(group_or_id_or_filter)
+	for _,th in ipairs(stoplist) do
+		if th:main() then
+			main_stopped = true
 			local opq = thread.opaque(th, "pulpo_opaque_t*")
+			-- if main thread stopped, and your main thread runs under pulpo's loop mode, all thread will die.
 			opq.poller:stop()
-			thread.join(th)
+			-- but if it does not, please check second argument and do proper shutdown.
+			return self_stopped, main_stopped
 		end
 	end
+	for _,th in ipairs(stoplist) do
+		local opq = thread.opaque(th, "pulpo_opaque_t*")
+		opq.poller:stop()
+		local process_current_thread = thread.equal(th, thread.me)
+		if process_current_thread then
+			self_stopped = true
+		end
+		if not process_current_thread then
+			local rv, canceled = thread.join(th)
+			if canceled then thread.fin_worker(th) end
+		end
+	end
+	return self_stopped, main_stopped
 end
 
 return _M

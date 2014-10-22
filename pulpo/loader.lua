@@ -1,7 +1,8 @@
 local ffi = require 'ffiex.init'
 local parser = require 'ffiex.parser'
 local memory = require 'pulpo.memory'
-local _M = {}
+local util = require 'pulpo.util'
+local _M = (require 'pulpo.package').module('pulpo.loader')
 local C = ffi.C
 local PT = C
 local _master
@@ -133,6 +134,8 @@ function _M.initialize(opts, loader_ffi_state)
 	local dir = (opts.cache_dir.."/cdefs")
 	_M.cache:init(dir)
 	_M.cache_dir = dir
+	--- create cache directory
+	util.mkdir(dir)
 	-- _M.load_mutex set inside thread.lua
 end
 

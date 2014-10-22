@@ -1,27 +1,16 @@
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
-local thread = require 'pulpo.thread'
-local loader = require 'pulpo.loader'
-local util = require 'pulpo.util'
 
 local C = ffi.C
 local PT = C
-local ffi_state
 local _M = {}
 
 -- if you want to use gen independently with thread module, please call this.
 function _M.initialize()
-	ffi_state = loader.load('generics.lua', {
-		"pthread_rwlock_t", 
-		"pthread_rwlock_rdlock", "pthread_rwlock_wrlock", 
-		"pthread_rwlock_unlock", 
-		"pthread_rwlock_init", "pthread_rwlock_destroy", 
-		"pthread_mutex_t",
-		"pthread_mutex_lock", "pthread_mutex_unlock",
-		"pthread_mutex_init", "pthread_mutex_destroy",
-	}, {}, thread.PTHREAD_LIB_NAME, [[
+	ffi.cdef [[
 		#include <pthread.h>
-	]])
+	]]
+	PT = ffi.load("pthread")
 end
 
 local created = {}

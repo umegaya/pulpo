@@ -109,6 +109,7 @@ function _M.initialize(sets, chs, global_name)
 		end
 		_M.initialized = true
 	end
+	return _M
 end
 
 return _M
