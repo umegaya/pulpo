@@ -57,6 +57,7 @@ ffi.cdef [[
 ]]
 
 local LUA_GLOBALSINDEX
+local PTHREAD_CANCELED
 
 function _M.init_cdef(cache)
 	ffi.path(util.luajit_include_path())
@@ -87,6 +88,9 @@ function _M.init_cdef(cache)
 	]])
 
 	LUA_GLOBALSINDEX = loader.ffi_state.defs.LUA_GLOBALSINDEX
+	-- currently, ffiex cannot parse macro definition with cast operator.
+	PTHREAD_CANCELED = ffi.cast('void *', ffi.new('char*') + 1)
+	-- print(PTHREAD_CANCELED)
 
 	ffi.cdef [[
 		typedef struct pulpo_tls {
@@ -433,13 +437,16 @@ function _M.at_exit()
 	end
 	-- print('at_exit end')
 end
-function _M.join(thread, on_finalize)
+function _M.join(thread)
 	local rv = ffi.new("void*[1]")
 	PT.pthread_join(thread.pt, rv)
-	_M.fin_worker(thread, on_finalize)
-	return rv[0]
+	return rv[0], rv[0] == PTHREAD_CANCELED
 end
-_M.destroy = _M.join
+function _M.destroy(thread, on_finalize)
+	local rv, cancel = _M.join(thread)
+	_M.fin_worker(thread, on_finalize)
+	return rv
+end
 
 -- check 2 thread handles (pthread_t) are same 
 function _M.equal(t1, t2)
