@@ -1,7 +1,6 @@
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
-local require_on_boot = (require 'pulpo.package').require
-local loader = require_on_boot 'pulpo.loader'
+local loader = require 'pulpo.loader'
 local _M = (require 'pulpo.package').module('pulpo.lock')
 local C = ffi.C
 local ffi_state

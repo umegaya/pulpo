@@ -1,10 +1,10 @@
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
-local require_on_boot = (require 'pulpo.package').require
-local loader = require_on_boot 'pulpo.loader'
+local loader = require 'pulpo.loader'
 
 --> ffi related utils
-local _M = (require 'pulpo.package').module('pulpo.util_ffi')
+local _M = (require 'pulpo.package').module('pulpo.defer.util_c')
+
 local C = ffi.C
 local ffi_state = loader.load('util.lua', {
 	"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
@@ -31,6 +31,10 @@ local ffi_state = loader.load('util.lua', {
 
 local RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
 local RLIMIT_NOFILE = ffi_state.defs.RLIMIT_NOFILE
+
+--> add NULL symbola
+ffi.NULL = ffi.new('void*')
+_M.NULL = ffi.new('void*')
 
 -- work memories
 _M.req,_M.rem = ffi.new('struct timespec[1]'), ffi.new('struct timespec[1]')

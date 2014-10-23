@@ -1,15 +1,12 @@
-local LOADER = 1
-local GLOBAL_LOCK = 2
-local SHARED_MEMORY = 3
-local MISC = 4
+local GLOBAL_LOCK = 1
+local SHARED_MEMORY = 2
+local MISC = 3
 return {
 	-- export symbols
-	LOADER 			= LOADER,
 	GLOBAL_LOCK 	= GLOBAL_LOCK,
 	SHARED_MEMORY 	= SHARED_MEMORY,
 	-- runlevel group
-	[LOADER] 		= {"loader"},
 	[GLOBAL_LOCK] 	= {"lock"},
 	[SHARED_MEMORY] = {"shmem"},
-	[MISC] 			= {"errno", "signal", "util_ffi", "socket"}, -- rc3.d
+	[MISC] 			= {"defer.errno_c", "defer.signal_c", "defer.util_c", "defer.socket_c"},
 }

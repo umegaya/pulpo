@@ -4,11 +4,9 @@ local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 local util = require 'pulpo.util'
 local event = require 'pulpo.event'
+local signal = require 'pulpo.signal'
 local exception = require 'pulpo.exception'
 local raise = exception.raise
-
-local require_on_boot = (require 'pulpo.package').require
-local signal = require_on_boot 'pulpo.signal'
 
 -- ffi.__DEBUG_CDEF__ = true
 local log = (require 'pulpo.logger').initialize()

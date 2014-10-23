@@ -1,26 +1,9 @@
 local ffi = require 'ffiex.init'
-local loader = require 'pulpo.loader'
-
-local _M = (require 'pulpo.package').module('pulpo.errno')
-
-local ffi_state = loader.load("errno.lua", {}, {
-	"EAGAIN", "EWOULDBLOCK", "ENOTCONN", "EINPROGRESS", "EPIPE", 
-	regex = {
-		"^E%w+"
-	}
-}, nil, [[
-	#include <errno.h>
-]])
+local require_on_boot = (require 'pulpo.package').require
+local _M = require_on_boot 'pulpo.defer.errno_c'
 
 function _M.errno()
 	return ffi.errno()
 end
 
-return setmetatable(_M, {
-	__index = function (t, k)
-		local v = ffi_state.defs[k]
-		assert(v, "no error definition:"..k)
-		rawset(t, k, v)
-		return v
-	end
-})
+return _M

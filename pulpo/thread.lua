@@ -7,6 +7,9 @@ local util = require 'pulpo.util'
 local exception = require 'pulpo.exception'
 local log = (require 'pulpo.logger').initialize()
 local gen = require 'pulpo.generics'
+local loader = require 'pulpo.loader'
+local signal = require 'pulpo.signal'
+local errno = require 'pulpo.errno'
 local runlv = require 'pulpo.runlv'
 local raise = exception.raise
 if not _G.pulpo_assert then
@@ -16,10 +19,7 @@ end
 local boot = require 'pulpo.package'
 local require_on_boot = boot.require
 local lock = require_on_boot 'pulpo.lock'
-local loader = require_on_boot 'pulpo.loader'
 local shmem = require_on_boot 'pulpo.shmem'
-local signal = require_on_boot 'pulpo.signal'
-local errno = require_on_boot 'pulpo.errno'
 
 local _M = {}
 local C = ffi.C
@@ -283,7 +283,7 @@ function _M.initialize(opts)
 	-- create common cache dir
 	util.mkdir(opts.cache_dir)
 	-- initialize loader and its cache directory.
-	boot.init_modules(runlv.LOADER)
+	-- boot.init_modules(runlv.LOADER)
 	loader.initialize(opts, ffi.main_ffi_state)
 	-- load and init lock module
 	boot.init_modules(runlv.GLOBAL_LOCK)
@@ -305,7 +305,7 @@ end
 function _M.init_worker(arg)
 	-- load loader (only ffi_state and flags) / lock
 	-- then initialize shared memory (after that, all module can get shared pointer through it)
-	boot.init_modules(runlv.LOADER, runlv.GLOBAL_LOCK)
+	boot.init_modules(runlv.GLOBAL_LOCK)
 	lock.init_worker(arg.mutex, arg.bootstrap_cdefs)
 	loader.init_worker(ffi.main_ffi_state)
 	-- load and init shared memory module

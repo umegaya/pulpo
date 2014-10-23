@@ -16,10 +16,13 @@ function _M.init_modules(startlv, endlv)
 	for lv=startlv,endlv,1 do
 		-- print(lv, initializers[lv])
 		if initializers[lv] then
+			local cnt = 0
 			for name,fn in pairs(initializers[lv]) do
 				debuglog('init_module', lv, name)
 				fn()
+				cnt = cnt + 1
 			end
+			debuglog('init_module end', lv, cnt)
 			initializers[lv] = false
 		end
 	end
@@ -40,7 +43,7 @@ function _M.add_initializer(name, fn)
 	if level then
 		local list = initializers[level]
 		debuglog('add initializer at level', name, level, list)
-		if not list then
+		if list == nil then
 			list = {}
 			initializers[level] = list
 		elseif list == false then
@@ -64,6 +67,7 @@ function _M.require(mod)
 	local pseudo_M = {}
 	pseudo_modules[mod] = pseudo_M
 	local loaded = _M.add_initializer(mod, function ()
+		debuglog('deferred_require:', mod, pseudo_M)
 		original_require(mod)
 		pseudo_modules[mod] = nil
 	end)
