@@ -2,6 +2,9 @@ local ffi = require 'ffiex.init'
 local C = ffi.C
 local PT = C
 
+--local boot = require 'pulpo.package'
+--boot.DEBUG = true
+
 local _M = {}
 local log = require 'pulpo.logger'
 local term = require 'pulpo.terminal'
@@ -32,9 +35,7 @@ local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
 local util = require 'pulpo.util'
 local gen = require 'pulpo.generics'
-
-local require_on_boot = (require 'pulpo.package').require
-local socket = require_on_boot 'pulpo.event'
+local socket = require 'pulpo.socket'
 
 _M.poller = poller
 _M.tentacle = tentacle
@@ -132,7 +133,7 @@ local function create_thread(exec, group, arg, noloop)
 			pulpo.evloop:loop()
 			pulpo.thread.fin_worker()
 		else
-			proc(arg)
+			pcall(proc, arg)
 		end
 		return ffi.NULL -- indicate graceful stop (not equal to PTHREAD_CANCELED)
 	end, arg or ffi.NULL, create_opaque(exec, group or "main", noloop))
@@ -257,7 +258,7 @@ function _M.run(opts, executable)
 	end
 	if opts.exclusive then
 		if opts.noloop then
-			util.create_proc(executable)(arg)
+			pcall(util.create_proc(executable), arg)
 		else
 			coroutine.wrap(util.create_proc(executable))(arg)
 			_M.evloop:loop()

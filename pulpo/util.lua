@@ -1,9 +1,5 @@
 local require_on_boot = (require 'pulpo.package').require
-local _M = require_on_boot 'pulpo.util_ffi'
-
---> add NULL symbola
-ffi.NULL = ffi.new('void*')
-_M.NULL = ffi.new('void*')
+local _M = require_on_boot 'pulpo.defer.util_c'
 
 --> hack for getting luajit include file path
 local major = math.floor(jit.version_num / 10000)
