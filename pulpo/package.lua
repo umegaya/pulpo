@@ -32,7 +32,7 @@ function _M.add_initializer(name, fn)
 	for lv,module_names in ipairs(runlevel_config) do
 		for _,module_name in ipairs(module_names) do
 			-- print('add_initializer', lv, module_name, name)
-			if name:match("pulpo%."..module_name) then
+			if name == module_name then
 				debuglog(name, 'match with:', "pulpo%."..module_name)
 				level = lv
 				goto add_proc
