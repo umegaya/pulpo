@@ -125,8 +125,6 @@ local function create_thread(exec, group, arg, noloop)
 			init_proc()
 			memory.free(opaque.init_proc)
 		end
-		_G.ffi = ffi
-		_G.pulpo = pulpo
 		memory.free(opaque.proc)
 		if opaque.noloop == 0 then
 			pulpo.tentacle(proc, arg)

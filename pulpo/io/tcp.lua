@@ -225,7 +225,7 @@ function _M.listen(p, addr, opts)
 		raise('syscall', 'listen', errno.errno(), fd)
 	end
 	logger.info('listen:', fd, addr, p)
-	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts)
+	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts) or nil)
 end
 
 return _M

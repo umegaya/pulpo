@@ -160,11 +160,18 @@ function _M.create_proc(executable)
 	return _M.decode_proc(_M.encode_proc(executable))
 end
 
-
+local sprintf_workmem
+local sprintf_workmem_size = 0
 function _M.sprintf(fmt, size, ...)
-	local p = memory.managed_alloc_typed('char', size + 1)
-	local n = C.snprintf(p, size + 1, fmt, ...)
-	return ffi.string(p, n)
+	if sprintf_workmem_size < (size + 1) then
+		if sprintf_workmem then
+			memory.free(sprintf_workmem)
+		end
+		sprintf_workmem = memory.alloc_typed('char', size + 1)
+		sprintf_workmem_size = size + 1
+	end
+	local n = C.snprintf(sprintf_workmem, size + 1, fmt, ...)
+	return ffi.string(sprintf_workmem, n)
 end
 
 function _M.getarg(ct, ...)

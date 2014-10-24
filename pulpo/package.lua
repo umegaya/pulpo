@@ -27,6 +27,17 @@ function _M.init_modules(startlv, endlv)
 		end
 	end
 end
+function _M.create_runlevel(modules)
+	table.insert(runlevel_config, modules)
+	if _M.DEBUG then
+		for lv,runs in ipairs(runlevel_config) do
+			for _,name in ipairs(runs) do
+				print(lv, name)
+			end
+		end
+	end
+	return #runlevel_config
+end
 function _M.add_initializer(name, fn)
 	local level
 	for lv,module_names in ipairs(runlevel_config) do

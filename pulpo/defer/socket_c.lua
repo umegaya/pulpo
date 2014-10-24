@@ -175,8 +175,8 @@ end
 function _M.htonl(x)
 	if LITTLE_ENDIAN then
 		return bit.bor(
-			bit.lshift( htons( bit.band( x, 0xFFFF ) ), 16 ),
-			htons( bit.rshift( x, 16 ) )
+			bit.lshift( _M.htons( bit.band( x, 0xFFFF ) ), 16 ),
+			_M.htons( bit.rshift( x, 16 ) )
 		)
 	else
 		return x
@@ -268,7 +268,7 @@ function _M.inet_namebyfd(fd, dst, len)
 	return sa
 end
 
-function _M.getifaddr(ifname)
+function _M.getifaddr(ifname, address_family)
 	local ppifa = ffi.new('struct ifaddrs *[1]')
 	if 0 ~= C.getifaddrs(ppifa) then
 		error('fail to get ifaddr list:'..ffi.errno())
@@ -286,8 +286,11 @@ function _M.getifaddr(ifname)
 	end 
 	if type(ifname) == 'string' then
 		while pifa ~= ffi.NULL do
+			-- print('check', ffi.string(pifa.ifa_name), pifa.ifa_addr.sa_family)
 			if ffi.string(pifa.ifa_name) == ifname then
-				break
+				if (not address_family) or (pifa.ifa_addr.sa_family == address_family) then
+					break
+				end
 			end
 			pifa = pifa.ifa_next
 		end
@@ -312,8 +315,24 @@ function _M.getifaddr(ifname)
 end
 
 local default = memory.alloc_fill_typed('pulpo_sockopt_t')
+function _M.table2sockopt(opts)
+	if (not opts) or (opts == util.NULL) then
+		return default
+	end
+	if type(opts) == "cdata" then
+		return opts
+	end
+	local buf = memory.alloc_fill_typed('pulpo_sockopt_t')
+	for _,prop in ipairs({"blocking", "timeout"}) do
+		if opts[prop] then buf[prop] = opts[prop] end
+	end
+	for _,prop in ipairs({"rblen", "wblen"}) do
+		if opts[prop] then buf[prop].data = opts[prop] end
+	end
+	return buf
+end
 function _M.setsockopt(fd, opts)
-	opts = (opts and opts ~= ffi.NULL) and opts or default
+	opts = _M.table2sockopt(opts)
 	if not opts.blocking then
 		local f = C.fcntl(fd, F_GETFL, 0) 
 		if f < 0 then
@@ -329,7 +348,7 @@ function _M.setsockopt(fd, opts)
 		end
 		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')')
 	end
-	if opts.timeout > 0 then
+	if opts.timeout and (opts.timeout > 0) then
 		local timeout = util.sec2timeval(tonumber(opts.timeout))
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, timeout, ffi.sizeof('struct timeval')) < 0 then
 			logger.error("setsockopt (sndtimeo) errno=", ffi.errno());
@@ -340,14 +359,14 @@ function _M.setsockopt(fd, opts)
 			return -3
 		end
 	end
-	if opts.wblen.data > 0 then
+	if opts.wblen and (opts.wblen.data > 0) then
 		logger.info(fd, "set wblen to", tonumber(opts.wblen));
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof(opts.wblen.p)) < 0 then
 			logger.error("setsockopt (sndbuf) errno=", errno);
 			return -4
 		end
 	end
-	if opts.rblen.data > 0 then
+	if opts.rblen and (opts.rblen.data > 0) then
 		logger.info(fd, "set rblen to", tonumber(opts.wblen));
 		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof(opts.rblen.p)) < 0 then
 			logger.error("setsockopt (rcvbuf) errno=", errno);

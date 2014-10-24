@@ -295,8 +295,8 @@ function _M.initialize(opts)
 	-- pick (or init) all necessary shared memory object from loader and lock module
 	-- after that, loader.load can be callable with thread safety
 	setup_shmem_args(_shared_memory)
-	-- load remain on-boot modules
-	boot.init_modules()
+	-- load syscall on-boot modules
+	boot.init_modules(runlv.SYSCALLS)
 	-- initialize pseudo thread handle of main thread
 	_M.me = memory.alloc_fill_typed("pulpo_thread_handle_t")
 	_M.me.pt = C.pthread_self()
@@ -314,8 +314,8 @@ function _M.init_worker(arg)
 	-- pick (or init) all necessary shared memory object from loader and lock module
 	-- after that, loader.load can be callable with thread safety
 	setup_shmem_args(_shared_memory)
-	-- load remain on-boot modules
-	boot.init_modules()
+	-- load syscall on-boot modules
+	boot.init_modules(runlv.SYSCALLS)
 	-- initialize current thread handles
 	_M.me = ffi.cast("pulpo_thread_handle_t*", arg.handle)
 	-- wait for thread appears in global list

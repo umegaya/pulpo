@@ -6,6 +6,7 @@ _pulpo.initialize({
 
 logger.info('launch thread1')
 _pulpo.run({ n_core = 1 }, function (args)
+	local pulpo = require 'pulpo.init'
 	local ioproc = require 'test.tools.ioproc'
 	local loop = pulpo.evloop
 	local linda = loop.io.linda
@@ -22,6 +23,7 @@ end)
 
 logger.info('launch thread2')
 _pulpo.run({ n_core = 1 }, function (args)
+	local pulpo = require 'pulpo.init'
 	local ioproc = require 'test.tools.ioproc'
 	local loop = pulpo.evloop
 	local linda = loop.io.linda
@@ -38,6 +40,7 @@ end)
 
 logger.info('launch thread3')
 _pulpo.run({ n_core = 1 }, function (args)
+	local pulpo = require 'pulpo.init'
 	local loop = pulpo.evloop
 	local linda = loop.io.linda
 	local c3 = linda.new('c3')

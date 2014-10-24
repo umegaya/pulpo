@@ -24,7 +24,9 @@ local function cdef_generics(type, tag, tmpl, mt, name)
 			basetype = type, 
 			typename = name,
 		})
-		-- print('decl = '..decl)
+		if _M.DEBUG then
+			print('generics', type, tag, 'decl = '..decl)
+		end
 		ffi.cdef(decl)
 		ffi.metatype(name, mt)
 	else
