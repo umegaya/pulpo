@@ -256,9 +256,9 @@ function _M.run(opts, executable)
 	end
 	if opts.exclusive then
 		if opts.noloop then
-			pcall(util.create_proc(executable), arg)
+			pcall(util.create_proc(executable), opts.arg)
 		else
-			coroutine.wrap(util.create_proc(executable))(arg)
+			coroutine.wrap(util.create_proc(executable))(opts.arg)
 			_M.evloop:loop()
 			pulpo.thread.finalize()
 		end

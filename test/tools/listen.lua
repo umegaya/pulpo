@@ -25,8 +25,8 @@ config.finished = false
 -- run server thread group with n_server_core (including *this* thread)
 pulpo.run({
 	group = "server",
-	n_core = pulpo.shared_memory('config').n_server_core,
-	args = config
+	n_core = config.n_server_core,
+	arg = config,
 	exclusive = true, -- use this thread is also run as worker
 }, "./test/tools/server.lua")
 
