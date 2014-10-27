@@ -80,7 +80,7 @@ local function tcp_read(io, ptr, len)
 	if n <= 0 then
 		if n == 0 then 
 			io:close('remote')
-			raise('pipe')
+			return nil
 		end
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
@@ -162,6 +162,9 @@ local function tcp_accept(io)
 ::retry::
 	-- print('tcp_accept:', io:fd())
 	if not ctx then
+		-- because if C.accept returns any fd, there is no point to yield this funciton.
+		-- so other coroutine which call tcp_accept never intercept this ctx. 
+		-- we can reuse ctx pointer for next accept call.
 		ctx = memory.alloc_typed('pulpo_tcp_context_t')
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
