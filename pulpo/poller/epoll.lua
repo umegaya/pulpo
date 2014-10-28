@@ -82,7 +82,9 @@ function io_index.fin(t, reason)
 		-- so in pulpo, I don't use dup.
 		-- if 3rdparty lib use dup(), please do it in gc_handler XD
 		-- (just call t:remove_from_poller())
+		local fd = tonumber(t:fd())
 		gc_handlers[t:type()](t)
+		udatalist[fd] = nil
 	end
 end
 io_index.wait_read = event.wait_read

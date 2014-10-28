@@ -13,6 +13,8 @@ if [ "$2" != "" ]; then
 fi
 if [ "$3" != "" ]; then
 	sed -i s/-h10000/-h$3/g bench.sh
+else
+	sed -i s/-h10000/-h2000/g bench.sh
 fi
 SSL_CMD=
 if [ "$4" != "" ]; then

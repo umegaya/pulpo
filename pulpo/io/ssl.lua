@@ -227,7 +227,14 @@ local function ssl_read(io, ptr, len)
 ::retry::
 	local n = ssl.SSL_read(io:ctx('pulpo_ssl_context_t*').ssl, ptr, len)
 	if n < 0 then
-		ssl_wait_io(io, n)
+		local ok, r = pcall(ssl_wait_io, io, n)
+		if not ok then 
+			if r:is('pipe') then
+				return nil
+			else
+				error(r)
+			end
+		end
 		goto retry
 	end
 	return n
@@ -265,12 +272,9 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 	end
 	return cio
 end
-local ctx
 local function ssl_accept(io)
-	if not ctx then
-		ctx = memory.alloc_typed('pulpo_ssl_context_t')
-		assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
-	end
+	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
+	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
 ::retry::
 	local n = C.accept(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen)
 	if n < 0 then
@@ -299,9 +303,11 @@ local function ssl_accept(io)
 		ctx.state = STATE.CONNECTED
 		if not ok then 
 			logger.error('accept error:', cio)
-			ctx:fin() 
+			ctx:fin() -- memory itself reused for next 
+			memory.free(ctx)
+			return nil
 		end
-		ctx = nil
+		ctx = nil -- ctx is stored with cio. 
 		return cio
 	end
 end
