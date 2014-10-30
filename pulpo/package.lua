@@ -15,15 +15,16 @@ function _M.init_modules(startlv, endlv)
 	-- print('init_modules', startlv, endlv)
 	for lv=startlv,endlv,1 do
 		-- print(lv, initializers[lv])
-		if initializers[lv] then
+		local init_list = initializers[lv]
+		if init_list then
+			initializers[lv] = false
 			local cnt = 0
-			for name,fn in pairs(initializers[lv]) do
+			for name,fn in pairs(init_list) do
 				debuglog('init_module', lv, name)
 				fn()
 				cnt = cnt + 1
 			end
 			debuglog('init_module end', lv, cnt)
-			initializers[lv] = false
 		end
 	end
 end

@@ -73,7 +73,7 @@ function _M.new(p, sig)
 	local signo = type(sig) == 'number' and sig or signal[sig]
 	if not p:add_signal(fd, signo) then 
 		C.close(fd)
-		raise('Poller', 'fail to add signal', fd, errno.errno())
+		raise('poller', 'fail to add signal', fd, errno.errno())
 	end
 	logger.info('signal:', fd, sig)
 	-- blocking default behavior of sigfd'ed signals

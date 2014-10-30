@@ -120,10 +120,12 @@ function io_index.write_yield(t)
 		t.wpoll = 1
 	end
 end
-function io_index.reactivate_write(t)
+function io_index.deactivate_write(t)
 	t.ev.filter = EVFILT_WRITE
 	t:remove_from_poller(t)
 	t.wpoll = 0
+end
+function io_index.reactivate_write(t)
 	t.ev.flags = bit.bor(EV_ADD, EV_CLEAR)
 	t:write_yield()
 end

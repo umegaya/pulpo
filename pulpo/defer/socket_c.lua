@@ -437,13 +437,18 @@ function _M.mcast(addr, opts, addrinfo)
 	-- TODO : create multicast
 end
 
-function _M.unix_domain()
-	local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
+function _M.unix_domain(opts)
+	local fd = C.socket(AF_UNIX, opts and opts.socktype or SOCK_STREAM, 0)
 	if fd < 0 then
 		logger.error('fail to create socket:', ffi.errno())
 		return nil
 	end
-	return fd	
+	if _M.setsockopt(fd, opts) < 0 then
+		logger.error('fail to set socket options:', ffi.errno())
+		C.close(fd)
+		return nil
+	end
+	return fd
 end
 
 function _M.dup(sock)

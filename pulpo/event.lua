@@ -284,11 +284,22 @@ function _M.ev_write(io)
 end
 
 function _M.wait_write(io)
-	-- print('wait_write', io:fd())
+	-- print('wait_write', io:fd(), debug.traceback())
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
 	io:write_yield()
+	local t = coroutine.yield()
+	assert(ev.waitq[1] == co)
+	table.remove(ev.waitq, 1)
+	return t
+end
+
+function _M.wait_reactivate_write()
+	-- print('wait_write', io:fd(), debug.traceback())
+	local co = pulpo_assert(coroutine.running(), "main thread")
+	local ev = _M.ev_write(io)
+	table.insert(ev.waitq, co)
 	local t = coroutine.yield()
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)

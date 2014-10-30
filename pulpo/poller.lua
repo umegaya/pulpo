@@ -30,7 +30,7 @@ ffi.cdef[[
 	} pulpo_poller_config_t;
 ]]
 
-exception.define('Poller')
+exception.define('poller')
 
 ---------------------------------------------------
 -- system independent poller object's API
@@ -97,7 +97,7 @@ local poller_module
 local function common_initialize(opts)
 	opts = opts or {}
 	--> change system limits
-	_M.config = thread.shared_memory('__poller__', function ()
+	_M.config = thread.shared_memory('__poller_config__', function ()
 		local data = memory.alloc_typed('pulpo_poller_config_t')
 		data.maxfd = util.maxfd(opts.maxfd or 1024, true)
 		data.maxconn = util.maxconn(opts.maxconn or 1024)
@@ -113,7 +113,7 @@ local function common_initialize(opts)
 			"kqueue" or 
 		(ffi.os == "Linux" and 
 			"epoll" or 
-			pulpo_assert(false, "unsupported arch:"..ffi.os))
+		pulpo_assert(false, "unsupported arch:"..ffi.os))
 	)
 	poller_module = require ("pulpo.poller."..poller)
 	iolist = poller_module.initialize({

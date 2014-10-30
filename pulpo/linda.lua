@@ -29,12 +29,30 @@ end
 function channel_mt.write(t, ptr, len)
 	return t.io[1]:write(ptr, len)
 end
+function channel_mt.__emid(t)
+	return t.io[0]:__emid()
+end
 function channel_mt.close(t)
 	t.io[0]:close()
 	t.io[1]:close()
 end
 function channel_mt.fd(t)
 	return t.io[0]:fd()
+end
+function channel_mt.reader(t)
+	return t.io[0]
+end
+function channel_mt.writer(t)
+	return t.io[1]
+end
+function channel_mt.read_yield(t)
+	t.io[0]:read_yield()
+end
+function channel_mt.write_yield(t)
+	t.io[1]:write_yield()
+end
+function channel_mt.reactivate_write(t)
+	t.io[1]:reactivate_write()
 end
 function channel_mt.event(t, event)
 	if event == 'write' then
@@ -61,6 +79,11 @@ ffi.metatype('pulpo_linda_t', {
 			t.channels:touch(function (data)
 				data:fin()
 			end)
+		end,
+		remove = function (t, k)
+			t.channels:touch(function (data, key)
+				return data:remove(key)
+			end, tostring(k))
 		end,
 		channel = function (t, poller, k, opts)
 			local pio = linda_cache[k]
