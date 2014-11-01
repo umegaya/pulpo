@@ -107,9 +107,11 @@ function io_index.write_yield(t)
 	end
 end
 function io_index.deactivate_write(t)
-	t.ev.events = bit.bor(EPOLLIN, EPOLLET)
-	t:activate(t.p)
-	t.wpoll = 0
+	if t.wpoll ~= 0 then
+		t.ev.events = bit.bor(EPOLLIN, EPOLLET)
+		t:activate(t.p)
+		t.wpoll = 0
+	end
 end	
 function io_index.reactivate_write(t)
 	t:write_yield()

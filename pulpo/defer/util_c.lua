@@ -67,9 +67,9 @@ end
 function _M.maxconn(set_to)
 --[[ 
 	if os somaxconn is less than TCP_LISTEN_BACKLOG, increase value by
-	linux:	sudo /sbin/sysctl -w net.core.somaxconn=NBR_TCP_LISTEN_BACKLOG
+	linux:	sudo /sbin/sysctl -w net.core.somaxconn=TCP_LISTEN_BACKLOG
 			(and sudo /sbin/sysctl -w net.core.netdev_max_backlog=3000)
-	osx:	sudo sysctl -w kern.ipc.somaxconn=NBR_TCP_LISTEN_BACKLOG
+	osx:	sudo sysctl -w kern.ipc.somaxconn=TCP_LISTEN_BACKLOG
 	(from http://docs.codehaus.org/display/JETTY/HighLoadServers)
 ]]
 	if ffi.os == "Linux" then

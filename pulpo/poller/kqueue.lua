@@ -121,9 +121,11 @@ function io_index.write_yield(t)
 	end
 end
 function io_index.deactivate_write(t)
-	t.ev.filter = EVFILT_WRITE
-	t:remove_from_poller(t)
-	t.wpoll = 0
+	if t.wpoll ~= 0 then
+		t.ev.filter = EVFILT_WRITE
+		t:remove_from_poller(t)
+		t.wpoll = 0
+	end
 end
 function io_index.reactivate_write(t)
 	t.ev.flags = bit.bor(EV_ADD, EV_CLEAR)
@@ -145,7 +147,7 @@ function io_index.add_to(t, poller)
 	local n = C.kevent(poller.kqfd, t.ev, 1, nil, 0, poller.timeout)
 	-- print(poller.kqfd, n, t.ev.ident, t.ev.filter)
 	if n ~= 0 then
-		logger.error('kqueue event add error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('kqueue event add error:'..ffi.errno())
 		return false
 	end
 	return true
@@ -155,7 +157,7 @@ function io_index.remove_from_poller(t)
 	local n = C.kevent(t.p.kqfd, t.ev, 1, nil, 0, t.p.timeout)
 	-- print(poller.kqfd, n, t.ident)
 	if n ~= 0 then
-		logger.error('kqueue event remove error:'..ffi.errno().."\n"..debug.traceback())
+		logger.error('kqueue event remove error:'..ffi.errno())
 		return false
 	end
 end

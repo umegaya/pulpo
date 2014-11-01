@@ -295,7 +295,7 @@ function _M.wait_write(io)
 	return t
 end
 
-function _M.wait_reactivate_write()
+function _M.wait_reactivate_write(io)
 	-- print('wait_write', io:fd(), debug.traceback())
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local ev = _M.ev_write(io)
