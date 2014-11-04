@@ -16,6 +16,9 @@ local default_methods = {
 	like = function (t, pattern)
 		return t.name:match(pattern)
 	end,
+	raise = function (t)
+		error(t)
+	end,
 }
 local default_metamethods = {
 	__tostring = function (t)
@@ -59,9 +62,9 @@ function _M.raise(name, ...)
 	if _M.debug then
 		local e = _M.new(name, debug.traceback(), ...)
 		logger.error(tostring(e))
-		error(e)
+		e:raise()
 	else
-		error(_M.new(name, debug.traceback(), ...))
+		_M.new(name, debug.traceback(), ...):raise()
 	end
 end
 
@@ -74,6 +77,14 @@ _M.define('malloc', {
 		else
 			return "fail to allocate:"..t.args[1].."("..ffi.sizeof(t.args[1]).." bytes)"
 		end
+	end,
+})
+_M.define('report', {
+	__tostring = function (t)
+		return t.args[1]
+	end,
+	raise = function (t)
+		coroutine.yield(t)
 	end,
 })
 
