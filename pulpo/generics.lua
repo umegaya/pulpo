@@ -242,7 +242,7 @@ function _M.mutex_ptr(type, name)
 				if ok then
 					return unpack(r)
 				else
-					error("mutex:touch fails:"..table.remove(r, 1))
+					error("mutex:touch fails:"..tostring(table.remove(r, 1)))
 				end
 			end,
 		},

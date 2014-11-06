@@ -22,12 +22,12 @@ local default_methods = {
 }
 local default_metamethods = {
 	__tostring = function (t)
-		return 'error:'..t.name..":"..t:message().." at "..t.bt
+		return 'error:'..t.name..":"..t:message()..t.bt
 	end,
 }
 
 -- local functions
-local function make_exception(name, decl)
+local function def_exception(name, decl)
 	decl = decl or {}
 	local tmp1 = {}
 	for k,v in pairs(default_methods) do
@@ -44,32 +44,37 @@ local function make_exception(name, decl)
 	return tmp2
 end
 
-function _M.new(name, bt, ...)
+local function new_exception(name, level, ...)
 	local decl = exceptions[name]
 	if not decl then
 		_M.raise("not_found", "exception", name)
 	end
-	return decl.__index.new(decl, bt, ...)
+	return decl.__index.new(decl, debug.traceback("", level), ...)
+end
+
+function _M.new(name, ...)
+	return new_exception(name, 2, ...)
 end
 
 -- module functions
 function _M.define(name, decl)
-	exceptions[name] = make_exception(name, decl) 
+	exceptions[name] = def_exception(name, decl) 
 	assert(exceptions[name].__index.new)
 end
 
 function _M.raise(name, ...)
 	if _M.debug then
-		local e = _M.new(name, debug.traceback(), ...)
+		local e = _M.new(name, ...)
 		logger.error(tostring(e))
 		e:raise()
 	else
-		_M.new(name, debug.traceback(), ...):raise()
+		new_exception(name, 3, ...):raise()
 	end
 end
 
 _M.define('not_found')
 _M.define('invalid')
+_M.define('runtime')
 _M.define('malloc', {
 	message = function (t)
 		if t.args[2] then
