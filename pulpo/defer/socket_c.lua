@@ -279,7 +279,7 @@ function _M.getifaddr(ifname_filters, address_family)
 		if ffi.os == "OSX" then
 			ifname_filters = {"en0", "lo0"}
 		elseif ffi.os == "Linux" then
-			ifname_filters = {"eth0", "lo0"}
+			ifname_filters = {"eth0", "lo"}
 		else
 			raise("invalid", "os", ffi.os)
 		end
@@ -303,6 +303,9 @@ function _M.getifaddr(ifname_filters, address_family)
 				end
 				pifa = pifa.ifa_next
 			end
+		end
+		if pifa ~= ffi.NULL then
+			break
 		end
 	end
 	if pifa == ffi.NULL then

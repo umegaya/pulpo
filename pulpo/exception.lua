@@ -1,4 +1,5 @@
 local ffi = require 'ffiex.init'
+local serpent = require 'serpent'
 
 local _M = {}
 local exceptions = {}
@@ -23,6 +24,9 @@ local default_methods = {
 local default_metamethods = {
 	__tostring = function (t)
 		return 'error:'..t.name..":"..t:message()..t.bt
+	end,
+	__serialize = function (t)
+		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(t.name, t.bt, serpent.dump(t.args)), true
 	end,
 }
 
@@ -55,6 +59,17 @@ end
 function _M.new(name, ...)
 	return new_exception(name, 2, ...)
 end
+function _M.unserialize(name, bt, args)
+	local decl = exceptions[name]
+	if not decl then
+		_M.raise("not_found", "exception", name)
+	end
+	local fn, err = loadstring(args)
+	if err then
+		_M.raise("runtime", err)
+	end
+	return decl.__index.new(decl, bt, unpack(fn()))
+end
 
 -- module functions
 function _M.define(name, decl)
@@ -64,7 +79,7 @@ end
 
 function _M.raise(name, ...)
 	if _M.debug then
-		local e = _M.new(name, ...)
+		local e = new_exception(name, 3, ...)
 		logger.error(tostring(e))
 		e:raise()
 	else
