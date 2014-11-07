@@ -1,5 +1,4 @@
 local ffi = require 'ffiex.init'
-local serpent = require 'serpent'
 
 local _M = {}
 local exceptions = {}
@@ -26,7 +25,8 @@ local default_metamethods = {
 		return 'error:'..t.name..":"..t:message()..t.bt
 	end,
 	__serialize = function (t)
-		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(t.name, t.bt, serpent.dump(t.args)), true
+		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(
+			t.name, t.bt, _M.args_serializer and _M.args_serializer(t.args) or "{}"), true
 	end,
 }
 
