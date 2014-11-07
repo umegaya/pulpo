@@ -3,15 +3,15 @@ local event = require 'pulpo.event'
 local _M = {}
 local metatable = {}
 local tentacle_mt = {}
+local cocache = {}
 
+local function err_handler(e)
+	logger.report('tentacle result:', tostring(e), debug.traceback())
+end
 local function tentacle_proc(ev, body, ...)
-	local args = {pcall(body, ...)}
-	if args[1] then
-		if _M.debug then
-			logger.notice('tentacle result:', unpack(args))
-		end
-	else
-		logger.report('tentacle result:', unpack(args))
+	local args = {xpcall(body, err_handler, ...)}
+	if _M.debug and args[1] then
+		logger.notice('tentacle result:', unpack(args))
 	end
 	ev:emit('end', unpack(args))
 end

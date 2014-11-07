@@ -41,6 +41,7 @@ local ev_mt = { __index = ev_index }
 function ev_index.emit(t, type, ...)
 	-- logger.notice('evemit:', t, type, #t.waitq)
 	for _,co in ipairs(t.waitq) do
+		-- waitq cleared inside resumed functions
 		coroutine.resume(co, type, t, ...)
 	end
 end
@@ -93,6 +94,7 @@ end
 
 function _M.emit_destroy(emitter, ev, reason)
 	for _,co in ipairs(ev.waitq) do
+		-- waitq cleared inside resumed functions
 		coroutine.resume(co, 'destroy', emitter, reason)
 	end
 end	
@@ -126,6 +128,8 @@ function _M.select(filter, ...)
 			break
 		end
 	end
+	-- if rev (received event) not set, then tmp is received event
+	-- in case no filter.
 	if not rev then
 		rev = tmp[2]
 		tmp[2] = rev.emitter

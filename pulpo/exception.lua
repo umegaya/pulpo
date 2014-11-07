@@ -8,7 +8,15 @@ local default_methods = {
 		return setmetatable({args={...}, bt = bt}, decl)
 	end,
 	message = function (t)
-		return table.concat(t.args, ",")
+		if #t.args <= 0 then
+			return ""
+		else
+			local ret = tostring(t.args[1])
+			for i=2,#t.args,1 do
+				ret = (ret .. "," .. tostring(t.args[i]))
+			end
+			return ret
+		end
 	end,
 	is = function (t, name)
 		return t.name == name
@@ -25,8 +33,7 @@ local default_metamethods = {
 		return 'error:'..t.name..":"..t:message()..t.bt
 	end,
 	__serialize = function (t)
-		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(
-			t.name, t.bt, _M.args_serializer and _M.args_serializer(t.args) or "{}"), true
+		return _M.serializer and _M.serializer(t) or tostring(t), true
 	end,
 }
 
