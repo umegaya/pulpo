@@ -16,15 +16,22 @@ local default_methods = {
 	like = function (t, pattern)
 		return t.name:match(pattern)
 	end,
+	raise = function (t)
+		error(t)
+	end,
 }
 local default_metamethods = {
 	__tostring = function (t)
-		return 'error:'..t.name..":"..t:message().." at "..t.bt
+		return 'error:'..t.name..":"..t:message()..t.bt
+	end,
+	__serialize = function (t)
+		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(
+			t.name, t.bt, _M.args_serializer and _M.args_serializer(t.args) or "{}"), true
 	end,
 }
 
 -- local functions
-local function make_exception(name, decl)
+local function def_exception(name, decl)
 	decl = decl or {}
 	local tmp1 = {}
 	for k,v in pairs(default_methods) do
@@ -41,32 +48,48 @@ local function make_exception(name, decl)
 	return tmp2
 end
 
-function _M.new(name, bt, ...)
+local function new_exception(name, level, ...)
 	local decl = exceptions[name]
 	if not decl then
 		_M.raise("not_found", "exception", name)
 	end
-	return decl.__index.new(decl, bt, ...)
+	return decl.__index.new(decl, debug.traceback("", level), ...)
+end
+
+function _M.new(name, ...)
+	return new_exception(name, 2, ...)
+end
+function _M.unserialize(name, bt, args)
+	local decl = exceptions[name]
+	if not decl then
+		_M.raise("not_found", "exception", name)
+	end
+	local fn, err = loadstring(args)
+	if err then
+		_M.raise("runtime", err)
+	end
+	return decl.__index.new(decl, bt, unpack(fn()))
 end
 
 -- module functions
 function _M.define(name, decl)
-	exceptions[name] = make_exception(name, decl) 
+	exceptions[name] = def_exception(name, decl) 
 	assert(exceptions[name].__index.new)
 end
 
 function _M.raise(name, ...)
 	if _M.debug then
-		local e = _M.new(name, debug.traceback(), ...)
+		local e = new_exception(name, 3, ...)
 		logger.error(tostring(e))
-		error(e)
+		e:raise()
 	else
-		error(_M.new(name, debug.traceback(), ...))
+		new_exception(name, 3, ...):raise()
 	end
 end
 
 _M.define('not_found')
 _M.define('invalid')
+_M.define('runtime')
 _M.define('malloc', {
 	message = function (t)
 		if t.args[2] then
@@ -74,6 +97,14 @@ _M.define('malloc', {
 		else
 			return "fail to allocate:"..t.args[1].."("..ffi.sizeof(t.args[1]).." bytes)"
 		end
+	end,
+})
+_M.define('report', {
+	__tostring = function (t)
+		return t.args[1]
+	end,
+	raise = function (t)
+		coroutine.yield(t)
 	end,
 })
 

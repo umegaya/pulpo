@@ -6,9 +6,9 @@ local ffi = require 'ffiex.init'
 
 local addr, mask
 if ffi.os == "OSX" then
-addr, mask = socket.getifaddr("lo0") 
+addr, mask = socket.getifaddr() 
 elseif ffi.os == "Linux" then
-addr, mask = socket.getifaddr("lo")
+addr, mask = socket.getifaddr()
 end
 print(addr, mask)
 

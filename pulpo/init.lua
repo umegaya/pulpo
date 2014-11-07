@@ -44,23 +44,24 @@ _M.event = event
 _M.util = util
 _M.shared_memory = thread.shared_memory
 
-local function create_opaque(fn, group, init_fn, noloop)
+local function create_opaque(fn, group, opts)
+	opts = opts or {}
 	local r = memory.alloc_fill_typed('pulpo_opaque_t')
 	-- generate unique seed
 	r.id = _M.id_seed:write(function (data)
 		data.cnt = data.cnt + 1
-		if data.cnt > 65000 then data.cnt = 1 end
 		return data.cnt
 	end)
-	r.noloop = (noloop and 1 or 0)
+	r.noloop = (opts.noloop and 1 or 0)
+	r.debug = (opts.debug and 1 or 0)
 	r.group = memory.strdup(group)
 	if fn then
 		local proc = util.encode_proc(fn)
 		r.proc = memory.strdup(proc)
 		r.plen = #proc
 	end
-	if init_fn then
-		local init_proc = util.encode_proc(init_fn)
+	if opts.init_fn then
+		local init_proc = util.encode_proc(opts.init_fn)
 		r.init_proc = memory.strdup(init_proc)
 		r.init_plen = #init_proc
 	end
@@ -75,7 +76,7 @@ end
 local function init_opaque(opts)
 	local opaque = thread.opaque(thread.me, "pulpo_opaque_t*")
 	if opaque == ffi.NULL then
-		opaque = create_opaque(nil, "root", opts and opts.init_proc or nil)
+		opaque = create_opaque(nil, "root", opts)
 		thread.set_opaque(thread.me, opaque)
 	end
 	opaque.poller = _M.evloop.poller -- it is wrapped.
@@ -92,7 +93,7 @@ local function init_cdef()
 	ffi.cdef[[
 		typedef struct pulpo_opaque {
 			unsigned short id;
-			unsigned char noloop, padd;
+			unsigned char noloop, debug;
 			char *group;
 			char *proc, *init_proc;
 			size_t plen, init_plen;
@@ -112,7 +113,7 @@ local function init_shared_memory()
 	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
 end
 
-local function create_thread(exec, group, arg, noloop)
+local function create_thread(exec, group, arg, opts)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex.init'
 		local pulpo = require 'pulpo.init'
@@ -134,7 +135,7 @@ local function create_thread(exec, group, arg, noloop)
 			pcall(proc, arg)
 		end
 		return ffi.NULL -- indicate graceful stop (not equal to PTHREAD_CANCELED)
-	end, arg or ffi.NULL, create_opaque(exec, group or "main", noloop))
+	end, arg or ffi.NULL, create_opaque(exec, group or "main", opts))
 end
 
 local function wrap_module(mod, p)
@@ -252,15 +253,15 @@ function _M.run(opts, executable)
 		n_core = n_core - 1
 	end
 	for i=1,n_core,1 do
-		create_thread(executable, opts.group, opts.arg, opts.noloop)
+		create_thread(executable, opts.group, opts.arg, opts)
 	end
 	if opts.exclusive then
 		if opts.noloop then
 			pcall(util.create_proc(executable), opts.arg)
 		else
-			coroutine.wrap(util.create_proc(executable))(opts.arg)
+			tentacle(util.create_proc(executable), opts.arg)
 			_M.evloop:loop()
-			pulpo.thread.finalize()
+			thread.finalize()
 		end
 	end
 end

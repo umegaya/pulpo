@@ -155,9 +155,13 @@ local ssl_info_callback_cdata = ffi.cast('void (*)(SSL *, int, int)', ssl_info_c
 local function ssl_wait_io(io, err)
 	local ret = ssl.SSL_get_error(io:ctx('pulpo_ssl_context_t*').ssl, err)
 	if ret == SSL_ERROR_WANT_READ then 
-		io:wait_read()
+		if not io:wait_read() then
+			raise("pipe")
+		end
 	elseif ret == SSL_ERROR_WANT_WRITE then
-		io:wait_write()
+		if not io:wait_write() then
+			raise("pipe")
+		end
 	elseif ret == SSL_ERROR_SYSCALL then
 		io:close('error')
 		raise("SSL", 'ssl_wait_io fail (%d/%d):%d', err, ret, errno.errno())
@@ -280,7 +284,9 @@ local function ssl_accept(io)
 	if n < 0 then
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			io:wait_read()
+			if not io:wait_read() then
+				raise('report', 'SSL:listener socket closed:'..tostring(io:fd()))
+			end
 			goto retry
 		else
 			raise("syscall", "accept", eno, io:nfd())

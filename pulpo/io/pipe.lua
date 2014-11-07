@@ -25,9 +25,15 @@ local function pipe_read(io, ptr, len)
 		if n == 0 then return nil end
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			io:wait_read()
+			if not io:wait_read() then 
+				return nil 
+			end
 			goto retry
+		elseif eno == EPIPE then
+			io:close('remote')
+			return nil
 		else
+			io:close('error')
 			raise('syscall', 'read', eno, io:nfd())
 		end
 	end
@@ -43,11 +49,15 @@ local function pipe_write(io, ptr, len)
 		local eno = errno.errno()
 		-- print(io:fd(), 'write fails', n, eno)
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			io:wait_write()
+			if not io:wait_write() then
+				return nil
+			end
 			goto retry
 		elseif eno == EPIPE then
-			raise('pipe')
+			io:close('remote')
+			return nil
 		else
+			io:close('error')
 			raise('syscall', 'write', eno, io:fd())
 		end
 	end

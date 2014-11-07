@@ -6,7 +6,9 @@ local function poller_read(io, ptr, len)
 	local p = io:ctx('pulpo_poller_t*')
 ::retry::
 	if p:wait() == 0 then
-		io:wait_read()
+		if not io:wait_read() then 
+			return nil
+		end
 		goto retry
 	end
 end

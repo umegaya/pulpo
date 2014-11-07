@@ -268,45 +268,48 @@ function _M.inet_namebyfd(fd, dst, len)
 	return sa
 end
 
-function _M.getifaddr(ifname, address_family)
+function _M.getifaddr(ifname_filters, address_family)
 	local ppifa = ffi.new('struct ifaddrs *[1]')
 	if 0 ~= C.getifaddrs(ppifa) then
 		error('fail to get ifaddr list:'..ffi.errno())
 	end
-	local pifa = ppifa[0]
+	local pifa
 	local addr,mask
-	if not ifname then
+	if not ifname_filters then
 		if ffi.os == "OSX" then
-			ifname = "en0"
+			ifname_filters = {"en0", "lo0"}
 		elseif ffi.os == "Linux" then
-			ifname = "eth0"
+			ifname_filters = {"eth0", "lo"}
 		else
 			raise("invalid", "os", ffi.os)
 		end
 	end 
-	if type(ifname) == 'string' then
-		while pifa ~= ffi.NULL do
-			-- print('check', ffi.string(pifa.ifa_name), pifa.ifa_addr.sa_family)
-			if ffi.string(pifa.ifa_name) == ifname then
-				if (not address_family) or (pifa.ifa_addr.sa_family == address_family) then
+	for _,ifname_filter in ipairs(ifname_filters) do
+		pifa = ppifa[0]
+		if type(ifname_filter) == 'string' then
+			while pifa ~= ffi.NULL do
+				-- print('check', ffi.string(pifa.ifa_name), pifa.ifa_addr.sa_family)
+				if ffi.string(pifa.ifa_name) == ifname_filter then
+					if (not address_family) or (pifa.ifa_addr.sa_family == address_family) then
+						break
+					end
+				end
+				pifa = pifa.ifa_next
+			end
+		elseif type(ifname_filter) == 'function' then
+			while pifa ~= ffi.NULL do
+				if ifname_filter(pifa) then
 					break
 				end
+				pifa = pifa.ifa_next
 			end
-			pifa = pifa.ifa_next
 		end
-	elseif type(ifname) == 'function' then
-		while pifa ~= ffi.NULL do
-			if ifname(pifa) then
-				break
-			end
-			pifa = pifa.ifa_next
-		end
-		if pifa == ffi.NULL then
-			C.freeifaddrs(pifa)
-			return true
+		if pifa ~= ffi.NULL then
+			break
 		end
 	end
 	if pifa == ffi.NULL then
+		C.freeifaddrs(ppifa[0])
 		raise("not_found", "interface:", ifname)
 	end
 	addr,mask = pifa.ifa_addr, pifa.ifa_netmask
@@ -437,13 +440,18 @@ function _M.mcast(addr, opts, addrinfo)
 	-- TODO : create multicast
 end
 
-function _M.unix_domain()
-	local fd = C.socket(AF_UNIX, SOCK_STREAM, 0)
+function _M.unix_domain(opts)
+	local fd = C.socket(AF_UNIX, opts and opts.socktype or SOCK_STREAM, 0)
 	if fd < 0 then
 		logger.error('fail to create socket:', ffi.errno())
 		return nil
 	end
-	return fd	
+	if _M.setsockopt(fd, opts) < 0 then
+		logger.error('fail to set socket options:', ffi.errno())
+		C.close(fd)
+		return nil
+	end
+	return fd
 end
 
 function _M.dup(sock)

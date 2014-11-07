@@ -52,7 +52,9 @@ local function tcp_connect(io)
 		if eno == EINPROGRESS then
 			-- print('EINPROGRESS:to:', socket.inet_namebyhost(ctx.addrinfo.addrp))
 			ctx.state = STATE.CONNECTING
-			io:wait_write()
+			if not io:wait_write() then
+				raise('invalid', 'socket', 'already closed')
+			end
 			ctx.state = STATE.CONNECTED
 			io:emit('open')
 			return true
@@ -84,7 +86,9 @@ local function tcp_read(io, ptr, len)
 		end
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			io:wait_read()
+			if not io:wait_read() then
+				return nil
+			end
 			goto retry
 		elseif eno == ENOTCONN then
 			tcp_connect(io)
@@ -101,7 +105,9 @@ local function on_write_error(io, ret)
 	local eno = errno.errno()
 	-- print(io:fd(), 'write fails', ret, eno, ffi.errno() )
 	if eno == EAGAIN or eno == EWOULDBLOCK then
-		io:wait_write()
+		if not io:wait_write() then
+			raise('pipe')
+		end
 	elseif eno == ENOTCONN then
 		tcp_connect(io)
 	elseif eno == EPIPE then
@@ -172,7 +178,9 @@ local function tcp_accept(io)
 	if n < 0 then
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			io:wait_read()
+			if not io:wait_read() then 
+				raise('report', 'TCP:listener socket closed:'..tostring(io:fd()))
+			end
 			goto retry
 		else
 			raise('syscall', 'accept', eno, io:nfd())

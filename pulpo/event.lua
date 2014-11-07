@@ -238,6 +238,7 @@ function _M.ev_read(io)
 	return assert(readlist[io:__emid()], "not initialized")
 end
 
+-- if return false, pipe error caused
 function _M.wait_read(io)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local ev = _M.ev_read(io)
@@ -246,7 +247,7 @@ function _M.wait_read(io)
 	local t = coroutine.yield()
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
-	return t
+	return t ~= 'destroy'
 end
 
 function _M.wait_emit(io)
@@ -283,8 +284,9 @@ function _M.ev_write(io)
 	return assert(writelist[io:__emid()], "not initialized")
 end
 
+-- if return false, pipe error caused
 function _M.wait_write(io)
-	-- print('wait_write', io:fd())
+	-- print('wait_write', io:fd(), debug.traceback())
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
@@ -292,7 +294,19 @@ function _M.wait_write(io)
 	local t = coroutine.yield()
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
-	return t
+	return t ~= 'destroy'
+end
+
+-- if return false, pipe error caused
+function _M.wait_reactivate_write(io)
+	-- print('wait_write', io:fd(), debug.traceback())
+	local co = pulpo_assert(coroutine.running(), "main thread")
+	local ev = _M.ev_write(io)
+	table.insert(ev.waitq, co)
+	local t = coroutine.yield()
+	assert(ev.waitq[1] == co)
+	table.remove(ev.waitq, 1)
+	return t ~= 'destroy'
 end
 
 function _M.emit_write(io)

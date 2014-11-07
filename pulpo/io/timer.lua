@@ -91,7 +91,7 @@ function _M.new(p, start, intv, ctx)
 	end
 	if not p:add_timer(fd, start, intv) then 
 		C.close(fd)
-		raise('Poller', 'fail to add timer', fd, errno.errno())
+		raise('poller', 'fail to add timer', fd, errno.errno())
 	end
 	logger.info('timer:', fd, start, intv)
 	return p:newio(fd, HANDLER_TYPE_TIMER, ctx)
