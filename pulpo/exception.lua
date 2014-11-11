@@ -55,16 +55,19 @@ local function def_exception(name, decl)
 	return tmp2
 end
 
-local function new_exception(name, level, ...)
+local function new_exception(name, bt, ...)
 	local decl = exceptions[name]
 	if not decl then
 		_M.raise("not_found", "exception", name)
 	end
-	return decl.__index.new(decl, debug.traceback("", level), ...)
+	return decl.__index.new(decl, 
+		type(bt) == 'number' and debug.traceback("", bt) or ("\n"..bt), ...)
 end
-
 function _M.new(name, ...)
 	return new_exception(name, 2, ...)
+end
+function _M.new_with_bt(name, bt, ...)
+	return new_exception(name, bt, ...)
 end
 function _M.unserialize(name, bt, args)
 	local decl = exceptions[name]
