@@ -54,4 +54,17 @@ function _M.copy_table(t, deep)
 	return r
 end
 
+function _M.random_k_from(t, k)
+	if #t <= k then 
+		return t
+	else
+		local r, tmp = {}, _M.copy_table(t)
+		for i=1,k,1 do
+			local e = table.remove(tmp, math.random(1, #tmp))
+			table.insert(r, e)
+		end
+		return r
+	end
+end
+
 return _M
