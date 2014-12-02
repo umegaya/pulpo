@@ -107,8 +107,9 @@ function _M.emit(emitter, type, ...)
 	end
 end
 
--- you can skip some unnecessary kind of event by filtering with filter
--- eg) destroy event
+-- wait one of the events specified in ..., is emitted.
+-- you can skip some unnecessary kind of event by filtering with *filter*
+-- if filter returns true, then select returns, otherwise *select* wait for next event to be emitted.
 function _M.select(filter, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
@@ -154,12 +155,12 @@ end
 -- wait all event specified in ... 
 -- actually timeout is not necessary to timeout event
 -- if timeout is not falsy, 
--- wait also wait timeout and if it is emitted, all unemitted events are marked as timeout
--- if all events except timeout, is emitted, wait no more wait timeout is emitted.
--- if timeout is falsy (nil or false), wait just waiting any other event permanently.
+-- *wait* also wait timeout and if it is emitted, all unemitted events are marked as 'timeout'
+-- if all events except *timeout*, is emitted, *wait* no more wait for emitting *timeout*.
+-- if *timeout* is falsy (nil or false), *wait* just wait for all other event permanently.
 -- 
--- returns array which emitted result in emit order (except result for timeout event object.
--- it will be placed last of returned array)
+-- returns array which emitted result in emit order, except result for timeout event object.
+-- it will be placed last of returned array.
 function _M.wait(timeout, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}

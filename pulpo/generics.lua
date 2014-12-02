@@ -1,3 +1,6 @@
+-- TODO : entirely need to rewritten for performance when processing large size of object (millions of)
+-- TODO : refine name. remove erastic_ 
+
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
 

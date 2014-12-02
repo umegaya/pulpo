@@ -3,33 +3,52 @@ local event = require 'pulpo.event'
 local _M = {}
 local metatable = {}
 local tentacle_mt = {}
-local cocache = {}
+
+local coro = {}
+local coro_mt = {
+	__index = coro,
+}
+local cache = {}
+local function main(co)
+	while true do
+		co[2]:emit('end', xpcall(coroutine.yield()))
+		table.insert(cache, co)
+	end
+end
+function coro.new()
+	if #cache > 0 then
+		local c = cache[#cache]
+		cache[#cache] = nil
+		return c
+	else
+		local co = coroutine.create(main)
+		local ev = event.new()
+		local c = setmetatable({co, ev}, coro_mt)
+		coroutine.resume(co, c)
+		return c
+	end
+end
+function coro:run(f, ...)
+	return select(2, coroutine.resume(self[1], f, ...))
+end
 
 local function err_handler(e)
 	logger.report('tentacle result:', tostring(e), debug.traceback())
 end
-local function tentacle_proc(ev, body, ...)
-	local args = {xpcall(body, err_handler, ...)}
-	if _M.debug and args[1] then
-		logger.notice('tentacle result:', unpack(args))
-	end
-	ev:emit('end', unpack(args))
-end
 function metatable.__call(t, body, ...)
-	local cof = coroutine.wrap(tentacle_proc)
-	local ev = event.new()
-	cof(ev, body, ...)
-	return ev
+	local c = coro.new()
+	coro.run(c, body, err_handler, ...)
+	return c[2]
 end
 function tentacle_mt.__call(t, ...)
-	local cof = coroutine.wrap(tentacle_proc)
-	cof(t[1], t[2], ...)
-	return t[1]
+	local c = coro.new()
+	coro.run(c, t[1], err_handler, ...)
+	return c[2]
 end
 -- late execution
 function _M.new(body)
 	return setmetatable({
-		event.new(), body
+		body
 	}, tentacle_mt)
 end
 

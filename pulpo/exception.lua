@@ -109,6 +109,12 @@ _M.define('malloc', {
 		end
 	end,
 })
+_M.define('fatal', {
+	raise = function (t)
+		logger.fatal(t)
+		os.exit(-1)
+	end,
+})
 _M.define('report', {
 	__tostring = function (t)
 		return t.args[1]

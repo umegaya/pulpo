@@ -162,7 +162,7 @@ end
 
 local sprintf_workmem
 local sprintf_workmem_size = 0
-function _M.sprintf(fmt, size, ...)
+function _M.rawsprintf(fmt, size, ...)
 	if sprintf_workmem_size < (size + 1) then
 		if sprintf_workmem then
 			memory.free(sprintf_workmem)
@@ -171,7 +171,10 @@ function _M.sprintf(fmt, size, ...)
 		sprintf_workmem_size = size + 1
 	end
 	local n = C.snprintf(sprintf_workmem, size + 1, fmt, ...)
-	return ffi.string(sprintf_workmem, n)
+	return sprintf_workmem, n
+end
+function _M.sprintf(fmt, size, ...)
+	return ffi.string(_M.rawsprintf(fmt, size, ...))
 end
 
 function _M.getarg(ct, ...)

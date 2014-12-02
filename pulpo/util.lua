@@ -67,4 +67,8 @@ function _M.random_k_from(t, k)
 	end
 end
 
+function _M.random(start_n, end_n)
+	return math.random(start_n, end_n)
+end
+
 return _M
