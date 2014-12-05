@@ -156,33 +156,52 @@ function _M.finalize()
 end
 
 local parse_macro_dependency
-parse_macro_dependency = function (out, already, defs, symbol)
+parse_macro_dependency = function (out, already, defs, sources, symbol)
 	if already[symbol] then return end
-	already[symbol] = true	
+	already[symbol] = true
 	local src = defs[symbol]
 	if not src then 
 		-- print(symbol, "not defined")
 		return 
+	elseif type(src) == 'function' then
+		src = sources[symbol]
+		-- print('sources for', symbol, 'is', src)
+		if not src then
+			-- print(symbol, "not defined")
+			return 
+		end
 	end
 	if type(src) == 'string' then
 		for w in src:gmatch("[%a_]+[%w_]*") do
 			-- print('w in src:', w, src)
-			parse_macro_dependency(out, already, defs, w)
+			parse_macro_dependency(out, already, defs, sources, w)
 		end
 	end
 	-- print('insert:', symbol, src)
 	table.insert(out, {symbol, src})
 end
+local function write_define_line(sym, src)
+	local args_count = 0
+	local ret, match = src:gsub("$([0-9]+)", "_%1")
+	if match > 0 then
+		sym = sym.."(_1"
+		for i=2,match,1 do
+			sym = sym..",_"..tostring(i)
+		end
+		sym = sym..")"
+	end
+	return "#define "..sym.." "..ret.."\n"
+end
 local function inject_macros(state, symbols)
 	local macro_decl = {}
 	local defines, already = {}, {}
 	for _,sym in pairs(symbols) do
-		parse_macro_dependency(defines, already, state.lcpp_defs, sym)
+		parse_macro_dependency(defines, already, state.lcpp_defs, state.lcpp_macro_sources, sym)
 	end
 	for i=1,#defines,1 do
 		local _sym,_src = defines[i][1], defines[i][2]
 		table.insert(macro_decl, "#if !defined(".._sym..")\n")
-		table.insert(macro_decl, "#define ".._sym.." ".._src.."\n")
+		table.insert(macro_decl, write_define_line(_sym, _src))
 		table.insert(macro_decl, "#endif\n")
 		already[_sym] = true
 	end
@@ -304,6 +323,7 @@ function _M.load(name, cdecls, macros, lib, from)
 	if not table.remove(ret, 1) then
 		local err = table.remove(ret, 1)
 		if _M.cache_dir then
+			print(err)
 			logger.error(msg:format(err .. "\n" .. debug.traceback(), caution))
 			if not _M.debug then
 				local util = require 'pulpo.util'

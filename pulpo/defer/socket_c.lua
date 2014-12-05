@@ -131,7 +131,7 @@ end
 --> exception 
 exception.define('syscall', {
 	message = function (t)
-		return ('tcp %s fails(%d) on %d'):format(t.args[1], t.args[2], t.args[3] or -1)
+		return ('%s fails(%d) on %d'):format(t.args[1], t.args[2], t.args[3] or -1)
 	end,
 })
 exception.define('pipe', {
@@ -268,9 +268,12 @@ function _M.inet_namebyfd(fd, dst, len)
 	return sa
 end
 local sockaddr_buf = ffi.new('struct sockaddr_in[1]')
+function _M.numeric_ipv4_addr_from_sockaddr(sa)
+	return _M.htonl(ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr)
+end
 function _M.numeric_ipv4_addr_by_host(host)
 	if _M.inet_hostbyname(host, sockaddr_buf) >= 0 then
-		return _M.htonl(ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr)
+		return _M.htonl(ffi.cast('struct sockaddr_in*', sockaddr_buf).sin_addr.s_addr)
 	else
 		exception.raise('invalid', 'address', host)
 	end

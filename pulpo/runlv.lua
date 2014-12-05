@@ -9,5 +9,5 @@ return {
 	-- runlevel group
 	[GLOBAL_LOCK] 	= {"pulpo.lock"},
 	[SHARED_MEMORY] = {"pulpo.shmem"},
-	[SYSCALLS] 		= {"pulpo.defer.errno_c", "pulpo.defer.signal_c", "pulpo.defer.util_c", "pulpo.defer.socket_c", "plupo.defer.fs_c"},
+	[SYSCALLS] 		= {"pulpo.defer.errno_c", "pulpo.defer.signal_c", "pulpo.defer.util_c", "pulpo.defer.socket_c", "pulpo.defer.fs_c"},
 }

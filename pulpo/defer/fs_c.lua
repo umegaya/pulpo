@@ -4,10 +4,10 @@ local exception = require 'pulpo.exception'
 exception.define('fs')
 
 
-local _M = (require 'pulpo.package').module('pulpo.defer.errno_c')
+local _M = (require 'pulpo.package').module('pulpo.defer.fs_c')
 local C = ffi.C
 
-local openflags = {
+local macros = {
 	"O_RDONLY",
 	"O_WRONLY",
 	"O_RDWR",
@@ -24,20 +24,66 @@ local openflags = {
 	"S_ISBLK", -- block device?
 	"S_ISFIFO", -- FIFO (named pipe)?
 	"S_ISLNK", -- symbolic link? (Not in POSIX.1-1996.)
-S_ISSOCK(m)
+	"S_ISSOCK", -- is socket ?
 }
-local ffi_state = loader.load('fs.lua', { 
-	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t",
-	"stat", "mkdir", "struct stat", "fileno", "unlink", 
-}, openflags, nil, [[
+local cdecls = { 
+	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t", "open", 
+	"stat", "mkdir", "rmdir", "struct stat", "fileno", "unlink", "syscall", 
+}
+if ffi.os == "OSX" then
+	table.insert(macros, "SYS_stat64")
+	table.insert(cdecls, "getdirentries")
+elseif ffi.os == "Linux" then
+	table.insert(macros, "SYS_stat")
+	table.insert(cdecls, "getdirentries64")
+else
+	assert(false, 'unsupported os:'..ffi.os)
+end
+
+local ffi_state = loader.load('fs.lua', cdecls, macros, nil, [[
 	#include <dirent.h>
 	#include <sys/stat.h>
 	#include <unistd.h>
 	#include <stdio.h>
+	#include <sys/syscall.h>
+	#include <sys/fcntl.h>
 	typedef struct pulpo_dir {
 		DIR *dir;
 	} pulpo_dir_t;
 ]])
+
+local syscall_stat, syscall_dents
+if ffi.os == "OSX" then
+	ffi.cdef [[
+		/* at luajit's readdir returns this format of dirent. (not 64bit inode version.) */
+		typedef struct pulpo_dirent {
+			__uint32_t d_ino;                    /* file number of entry */
+			__uint16_t d_reclen;            /* length of this record */
+			__uint8_t  d_type;              /* file type, see below */
+			__uint8_t  d_namlen;            /* length of string in d_name */
+			char d_name[0];    /* name must be no longer than this */
+		} pulpo_dirent_t;
+	]]
+	function syscall_stat(path, st)
+		return C.syscall(ffi.defs.SYS_stat64, path, st)
+	end
+	function syscall_dents(fd, buf, n_bytes, basep)
+		-- return C.syscall(ffi.defs.SYS_getdirentries64, fd, buf, n_bytes)
+		return C.getdirentries(fd, buf, n_bytes, basep)
+	end
+elseif ffi.os == "Linux" then
+	ffi.cdef [[
+		typedef struct dirent pulpo_dirent_t;
+	]]
+	function syscall_stat(path, st)
+		return C.syscall(ffi.defs.SYS_stat, path, st)
+	end
+	function syscall_dents(fd, buf, n_bytes, basep)
+		return C.getdirentries64(fd, buf, n_bytes, basep)
+	end
+else
+	assert(false, 'unsupported os:'..ffi.os)
+end
 
 local O_RDONLY = ffi_state.defs.O_RDONLY
 local O_WRONLY = ffi_state.defs.O_WRONLY
@@ -56,81 +102,141 @@ local S_ISBLK = ffi_state.defs.S_ISBLK -- block device?
 local S_ISFIFO = ffi_state.defs.S_ISFIFO -- FIFO (named pipe)?
 local S_ISLNK = ffi_state.defs.S_ISLNK -- symbolic link? (Not in POSIX.1-1996.)
 -- export to openflags 
-for _,flag in ipairs(openflags) do
-	_M[flag] = ffi_state.defs[flag]
+for _,flag in ipairs(macros) do
+	if flag:sub(1,2) == "O_" then
+		_M[flag] = ffi_state.defs[flag]
+	end
 end
 
 -- dir ctype
 local dir_index = {}
 local dir_mt = {
-	__index = dir_idx,
+	__index = dir_index,
 	__gc = function (t)
 		if t.dir ~= ffi.NULL then
 			C.closedir(t.dir)
 		end
 	end
 }
-local function directory_iterator(dir, recursive)
+local basep = ffi.new('long[1]')
+local buf = ffi.new('unsigned char[2048]')
+local function raw_iterate_dir(path)
+	local fd = C.open(path, O_RDONLY, 0)
+	assert(fd >= 0, "fail to open dir:"..tostring(ffi.errno()))
+	local size = 0
+	local last = buf
+	while true do
+		local n_read = syscall_dents(fd, last, 2048 - size, basep)
+		if n_read == 0 then
+			break
+		elseif n_read < 0 then
+			exception.raise('syscall', 'dents', ffi.errno(), fd)
+		end
+		last, size = last + n_read, size + n_read
+		local ofs = 0
+		assert(size >= ffi.offsetof('pulpo_dirent_t', 'd_name'))
+		while ofs < size do
+			local ent = ffi.cast('pulpo_dirent_t*', buf + ofs)
+			print(bit.rshift(ent.d_namlen, 8), ent.d_reclen, ffi.string(ent.d_name - 1), ofs)
+			ofs = ofs + ent.d_reclen
+		end
+		if ofs < size then
+			size = size - ofs
+			memory.move(buf, buf + ofs, size)
+			last = buf + size
+		end
+	end
+end
+local function directory_iterator(dir)
 	return function (d)
-		local ent = C.readdir(d)
-		--print('data:', ent.d_name[0], ent.d_name[1], ent.d_name[2])
+		local ent = ffi.cast('pulpo_dirent_t *', C.readdir(d))
 		if ent ~= ffi.NULL then
+			-- print(ent.d_ino, ent.d_reclen, ent.d_namlen, ent.d_type, ent.d_name)
 			return ffi.string(ent.d_name)
 		else
 			return nil
 		end
 	end, dir
 end
-function dir_idx:iter()
+function dir_index:iter()
 	return directory_iterator(self.dir)
 end
 ffi.metatype('pulpo_dir_t', dir_mt)
 
 -- module body
+local stat_buf = ffi.new('struct stat[1]')
+function _M.stat(path, st)
+	st = st or stat_buf
+	if syscall_stat(path, st) == -1 then
+		exception.raise('syscall', "stat", ffi.string(path), ffi.errno()) 
+	end
+	return st
+end
+function _M.exists(path)
+	return syscall_stat(path, stat_buf) >= 0
+end
 function _M.opendir(path)
 	local p = ffi.new('pulpo_dir_t')
 	p.dir = C.opendir(path)
 	if p.dir == ffi.NULL then 
-		exception.raise('syscall', "cannot open dir", ffi.string(path), ffi.errno()) 
+		exception.raise('syscall', "opendir", ffi.string(path), ffi.errno()) 
 	end
 	return p
 end
-local st = ffi.new('struct stat[1]')
 function _M.mkdir(path, readonly)
 	local tmp
-	for name in path:gmatch('[^/]+') do
+	for name in path:gmatch('[^/¥]+') do
 		if tmp then
-			tmp = (tmp .. "/" ..name)
-		elseif path[1] == '/' then
-			tmp = ('/'..name)
+			tmp = _M.path(tmp, name)
+		elseif path[1] ~= _M.PATH_SEPS then
+			tmp = _M.path('', name)
 		else
 			tmp = name
 		end
-		if C.stat(tmp, st) == -1 then
+		if not _M.exists(tmp) then
 			local mode = readonly and '0555' or '0755'
-			C.mkdir(tmp, tonumber(mode, 8))
+			if C.mkdir(tmp, tonumber(mode, 8)) < 0 then
+				exception.raise('syscall', "mkdir", tmp, ffi.errno()) 
+			end
 		end
 	end
-	return _M.dir.open(path)
+end
+function _M.rmdir(path, check_dir_empty)
+	local dir = _M.opendir(path)
+	for file in dir:iter() do
+		if check_dir_empty then
+			exception.raise('fs', 'rmdir', 'not empty', file)
+		end
+		if not file:match('^%.+$') then
+			file = _M.path(path, file)
+			-- print('file:', file, _M.is_dir(file), _M.is_file(file))
+			if _M.is_dir(file) then
+				_M.rmdir(file)
+			elseif _M.is_file(file) then
+				_M.delete(file)
+			end
+		end
+	end
+	C.rmdir(path)
+end
+function _M.delete(path)
+	if C.unlink(path) < 0 then
+		exception.raise('syscall', 'unlink', path, ffi.errno())
+	end
 end
 function _M.fileno(io)
 	return C.fileno(io)
 end
-
 function _M.open(path, flags, mode)
 	return C.open(path, flags, mode or O_RDWR)
 end
 function _M.is_dir(path)
-	if C.stat(path, st) == -1 then
-		exception.raise('syscall', "cannot open path", ffi.string(path), ffi.errno()) 
-	end
-	return S_ISDIR(st.st_mode) ~= 0
+	local st = _M.stat(path)
+	return S_ISDIR(st[0].st_mode)
 end
 function _M.is_file(path)
-	if C.stat(path, st) == -1 then
-		exception.raise('syscall', "cannot open path", ffi.string(path), ffi.errno()) 
-	end
-	return S_ISREG(st.st_mode) ~= 0
+	local st = _M.stat(path)
+	return S_ISREG(st[0].st_mode)
 end
 
 return _M

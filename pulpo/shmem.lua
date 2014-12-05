@@ -1,6 +1,8 @@
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
 local gen = require 'pulpo.generics'
+local exception = require 'pulpo.exception'
+exception.define('shmem')
 
 local _M = (require 'pulpo.package').module('pulpo.shmem')
 
@@ -31,7 +33,7 @@ ffi.metatype('pulpo_shmem_t', {
 					local obj = ffi.cast(typename.."*", e.ptr)
 					local ok, fn = pcall(debug.getmetatable(obj).__index, obj, "fin")
 					if ok then
-						print('fin called for', typename)
+						-- print('fin called for', typename)
 						obj:fin()
 					end
 					memory.free(e.type)	
@@ -51,7 +53,7 @@ ffi.metatype('pulpo_shmem_t', {
 					end
 				end
 				if not init then
-					error("no attempt to initialize but not found:"..name)
+					exception.raise('shmem', 'no initializer')
 				end
 				e = data.list[data.used]
 				e.name = memory.strdup(name)
@@ -59,9 +61,7 @@ ffi.metatype('pulpo_shmem_t', {
 					e.type, e.ptr = memory.strdup(init), memory.alloc_fill_typed(init)
 				elseif type(init) == "function" then
 					local t, ptr = init()
-					assert(ptr and ptr ~= ffi.NULL)
 					e.type, e.ptr = memory.strdup(t), ptr
-					assert(e.ptr and e.ptr ~= ffi.NULL)
 				else
 					pulpo_assert(false, "no initializer:"..type(init))
 				end

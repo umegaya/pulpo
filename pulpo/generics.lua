@@ -3,6 +3,8 @@
 
 local ffi = require 'ffiex.init'
 local memory = require 'pulpo.memory'
+local exception = require 'pulpo.exception'
+exception.define('generics')
 
 local C = ffi.C
 local PT = C
@@ -14,6 +16,16 @@ function _M.initialize()
 		#include <pthread.h>
 	]]
 	PT = ffi.load("pthread")
+end
+
+local function finalizer_err_handler(e)
+	return exception.new('generics', 'finalizer', e)
+end
+local function rwlock_err_handler(e)
+	return exception.new('generics', 'rwlock_ptr', e)
+end
+local function mutex_err_handler(e)
+	return exception.new('generics', 'mutex_ptr', e)
 end
 
 local created = {}
@@ -101,7 +113,7 @@ function _M.erastic_map(type, name)
 			end,
 			delete = function (t, e)
 				memory.free(e.name)
-				local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
+				local ok, fn = xpcall(debug.getmetatable(e.data).__index, finalizer_err_handler, e.data, "fin")
 				if ok then
 					e.data:fin()
 				end
@@ -182,7 +194,7 @@ function _M.rwlock_ptr(type, name)
 			end,
 			fin = function (t, fzr)
 				if fzr == nil then 
-					local ok, fn = pcall(debug.getmetatable(e.data).__index, e.data, "fin")
+					local ok, fn = xpcall(debug.getmetatable(e.data).__index, finalizer_err_handler, e.data, "fin")
 					if ok then fzr = fn end
 				end
 				if fzr then t:write(fzr) end
@@ -190,24 +202,24 @@ function _M.rwlock_ptr(type, name)
 			end,
 			read = function (t, fn, ...)
 				PT.pthread_rwlock_rdlock(t.lock)
-				local r = {pcall(fn, t.data, ...)}
-				local ok = table.remove(r, 1)
+				local r = {xpcall(fn, rwlock_err_handler, t.data, ...)}
 				PT.pthread_rwlock_unlock(t.lock)
+				local ok = table.remove(r, 1)
 				if ok then
 					return unpack(r)
 				else
-					error("rwlock:read fails:"..table.remove(r, 1))
+					error(r[2])
 				end
 			end,
 			write = function (t, fn, ...)
 				PT.pthread_rwlock_wrlock(t.lock)
-				local r = {pcall(fn, t.data, ...)}
-				local ok = table.remove(r, 1)
+				local r = {xpcall(fn, rwlock_err_handler, t.data, ...)}
 				PT.pthread_rwlock_unlock(t.lock)
+				local ok = table.remove(r, 1)
 				if ok then
 					return unpack(r)
 				else
-					error("rwlock:write fails:"..table.remove(r, 1))
+					error(r[1])
 				end
 			end,
 		},
@@ -239,13 +251,13 @@ function _M.mutex_ptr(type, name)
 			end,
 			touch = function (t, fn, ...)
 				PT.pthread_mutex_lock(t.lock)
-				local r = {pcall(fn, t.data, ...)}
-				local ok = table.remove(r, 1)
+				local r = {xpcall(fn, mutex_err_handler, t.data, ...)}
 				PT.pthread_mutex_unlock(t.lock)
+				local ok = table.remove(r, 1)
 				if ok then
 					return unpack(r)
 				else
-					error("mutex:touch fails:"..tostring(table.remove(r, 1)))
+					error(r[1])
 				end
 			end,
 		},

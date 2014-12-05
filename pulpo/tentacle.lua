@@ -33,7 +33,11 @@ function coro:run(f, ...)
 end
 
 local function err_handler(e)
-	logger.report('tentacle result:', tostring(e), debug.traceback())
+	if type(e) == 'table' then
+		logger.report('tentacle result:', e)
+	else
+		logger.report('tentacle result:', tostring(e), debug.traceback())
+	end
 end
 function metatable.__call(t, body, ...)
 	local c = coro.new()
