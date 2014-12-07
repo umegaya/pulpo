@@ -54,6 +54,24 @@ function _M.copy_table(t, deep)
 	return r
 end
 
+function _M.table_equals(t1, t2)
+	for k,v in pairs(t1) do
+		if not t2[k] then
+			return false, k
+		elseif type(t2[k]) == "table" then
+			return _M.table_equals(t1[k], t2[k])		
+		elseif t1[k] ~= t2[k] then
+			return false, k
+		end
+	end
+	for k,v in pairs(t2) do
+		if not t1[k] then
+			return false, k
+		end
+	end
+	return true
+end
+
 function _M.random_k_from(t, k)
 	if #t <= k then 
 		return t

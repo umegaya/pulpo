@@ -8,8 +8,7 @@ local _M = (require 'pulpo.package').module('pulpo.defer.util_c')
 local C = ffi.C
 local ffi_state = loader.load('util.lua', {
 	"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
-	"gettimeofday", "snprintf", 
-	"getpid", 
+	"gettimeofday", "snprintf", "strnlen", "getpid", 
 }, {
 	"RLIMIT_NOFILE",
 	"RLIMIT_CORE",
@@ -19,6 +18,7 @@ local ffi_state = loader.load('util.lua', {
 	#include <sys/resource.h>
 	#include <stdio.h>
 	#include <unistd.h>
+	#include <string.h>
 ]] or (ffi.os == "Linux" and [[
 	#include <time.h>
 	#include <sys/time.h> 
@@ -27,6 +27,7 @@ local ffi_state = loader.load('util.lua', {
 	#undef __USE_GNU
 	#include <stdio.h>
 	#include <unistd.h>
+	#include <string.h>
 ]] or assert(false, "unsupported OS:"..ffi.os)))
 
 local RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
@@ -175,6 +176,10 @@ function _M.rawsprintf(fmt, size, ...)
 end
 function _M.sprintf(fmt, size, ...)
 	return ffi.string(_M.rawsprintf(fmt, size, ...))
+end
+
+function _M.strlen(p, estsize)
+	return C.strnlen(p, estsize)
 end
 
 function _M.getarg(ct, ...)

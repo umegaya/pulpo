@@ -167,10 +167,7 @@ ffi.metatype('pulpo_dir_t', dir_mt)
 local stat_buf = ffi.new('struct stat[1]')
 function _M.stat(path, st)
 	st = st or stat_buf
-	if syscall_stat(path, st) == -1 then
-		exception.raise('syscall', "stat", ffi.string(path), ffi.errno()) 
-	end
-	return st
+	return syscall_stat(path, st) >= 0 and st or nil
 end
 function _M.exists(path)
 	return syscall_stat(path, stat_buf) >= 0
@@ -178,10 +175,7 @@ end
 function _M.opendir(path)
 	local p = ffi.new('pulpo_dir_t')
 	p.dir = C.opendir(path)
-	if p.dir == ffi.NULL then 
-		exception.raise('syscall', "opendir", ffi.string(path), ffi.errno()) 
-	end
-	return p
+	return p.dir ~= ffi.NULL and p or nil
 end
 function _M.mkdir(path, readonly)
 	local tmp
@@ -203,6 +197,7 @@ function _M.mkdir(path, readonly)
 end
 function _M.rmdir(path, check_dir_empty)
 	local dir = _M.opendir(path)
+	if not dir then return end
 	for file in dir:iter() do
 		if check_dir_empty then
 			exception.raise('fs', 'rmdir', 'not empty', file)
@@ -220,9 +215,7 @@ function _M.rmdir(path, check_dir_empty)
 	C.rmdir(path)
 end
 function _M.delete(path)
-	if C.unlink(path) < 0 then
-		exception.raise('syscall', 'unlink', path, ffi.errno())
-	end
+	return C.unlink(path) >= 0
 end
 function _M.fileno(io)
 	return C.fileno(io)
@@ -232,11 +225,11 @@ function _M.open(path, flags, mode)
 end
 function _M.is_dir(path)
 	local st = _M.stat(path)
-	return S_ISDIR(st[0].st_mode)
+	return st and S_ISDIR(st[0].st_mode)
 end
 function _M.is_file(path)
 	local st = _M.stat(path)
-	return S_ISREG(st[0].st_mode)
+	return st and S_ISREG(st[0].st_mode)
 end
 
 return _M
