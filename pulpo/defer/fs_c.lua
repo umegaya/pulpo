@@ -25,10 +25,15 @@ local macros = {
 	"S_ISFIFO", -- FIFO (named pipe)?
 	"S_ISLNK", -- symbolic link? (Not in POSIX.1-1996.)
 	"S_ISSOCK", -- is socket ?
+
+	"SEEK_SET", -- offset is set to offset byte
+	"SEEK_CUR", -- offset is set to current offset + offset
+	"SEEK_END", -- offset is set to file size + offset
 }
 local cdecls = { 
-	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t", "open", 
+	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t", "open", "fsync", 
 	"stat", "mkdir", "rmdir", "struct stat", "fileno", "unlink", "syscall", 
+	"lseek", 
 }
 if ffi.os == "OSX" then
 	table.insert(macros, "SYS_stat64")
@@ -103,7 +108,7 @@ local S_ISFIFO = ffi_state.defs.S_ISFIFO -- FIFO (named pipe)?
 local S_ISLNK = ffi_state.defs.S_ISLNK -- symbolic link? (Not in POSIX.1-1996.)
 -- export to openflags 
 for _,flag in ipairs(macros) do
-	if flag:sub(1,2) == "O_" then
+	if flag:sub(1,2) == "O_" or flag:sub(1,5) == "SEEK_" then
 		_M[flag] = ffi_state.defs[flag]
 	end
 end
@@ -219,6 +224,12 @@ function _M.delete(path)
 end
 function _M.fileno(io)
 	return C.fileno(io)
+end
+function _M.mode(modestr)
+	if modestr:byte() ~= ("0"):byte() then
+		modestr = "0"..modestr
+	end
+	return ffi.new('__uint16_t', tonumber(modestr, "8"))
 end
 function _M.open(path, flags, mode)
 	return C.open(path, flags, mode or O_RDWR)
