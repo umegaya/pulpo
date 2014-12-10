@@ -193,8 +193,10 @@ function _M.mkdir(path, readonly)
 			tmp = name
 		end
 		if not _M.exists(tmp) then
-			local mode = readonly and '0555' or '0755'
-			if C.mkdir(tmp, tonumber(mode, 8)) < 0 then
+			if C.mkdir(tmp, _M.mode(readonly and '0555' or '0755')) < 0 then
+				exception.raise('syscall', "mkdir", tmp, ffi.errno()) 
+			end
+			if not _M.exists(tmp) then
 				exception.raise('syscall', "mkdir", tmp, ffi.errno()) 
 			end
 		end
@@ -213,13 +215,13 @@ function _M.rmdir(path, check_dir_empty)
 			if _M.is_dir(file) then
 				_M.rmdir(file)
 			elseif _M.is_file(file) then
-				_M.delete(file)
+				_M.rm(file)
 			end
 		end
 	end
 	C.rmdir(path)
 end
-function _M.delete(path)
+function _M.rm(path)
 	return C.unlink(path) >= 0
 end
 function _M.fileno(io)

@@ -168,12 +168,10 @@ function _M.init_cdef(cache)
 				PT.pthread_mutex_lock(t.mtx)
 				local found = false
 				for i=0,t.used-1,1 do
-					if not found then 
-						if PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
-							found = true
-						end
-					else
+					if found then 
 						t.list[i - 1] = t.list[i]
+					elseif PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
+						found = true
 					end
 				end
 				if found then
@@ -465,7 +463,16 @@ end
 
 -- global share memory
 function _M.shared_memory(k, v)
-	return _shared_memory:find_or_init(k, v)
+	if v then
+		return _shared_memory:find_or_init(k, v)
+	else
+		return _shared_memory:delete(k)
+	end
+end
+function _M.lock_shared_memory(k, proc, ...)
+	return _shared_memory:touch(k, function (data, fn, ...)
+		return fn(data.ptr, ...)
+	end, proc, ...)
 end
 
 -- iterate all thread in this process

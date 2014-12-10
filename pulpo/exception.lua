@@ -18,6 +18,9 @@ local default_methods = {
 			return ret
 		end
 	end,
+	get_arg = function (t, idx)
+		return t.args[idx]
+	end,
 	is = function (t, name)
 		return t.name == name
 	end,

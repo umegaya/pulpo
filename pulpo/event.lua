@@ -45,6 +45,9 @@ function ev_index.emit(t, type, ...)
 		coroutine.resume(co, type, t, ...)
 	end
 end
+function ev_index.destroy(t, reason)
+	t:emit('destroy', t, reason)
+end
 
 function _M.add_to(emitter, type, py)
 	local id = emitter:__emid()

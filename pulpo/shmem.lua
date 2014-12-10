@@ -63,11 +63,50 @@ ffi.metatype('pulpo_shmem_t', {
 					local t, ptr = init()
 					e.type, e.ptr = memory.strdup(t), ptr
 				else
-					pulpo_assert(false, "no initializer:"..type(init))
+					exception.raise('shmem', 'initializer', 'not found', name)
 				end
-				data.used = (data.used + 1)
+				data.used = data.used + 1
 				return ffi.cast(ffi.string(e.type).."*", e.ptr)
 			end, _name, _init)
+		end,
+		touch = function (t, _name, proc, ...)
+			return t.blocks:touch(function (data, name, fn, ...)
+				local e
+				for i=0,data.used-1,1 do
+					e = data.list[i]
+					if ffi.string(e.name) == name then
+						return fn(e, ...)
+					end
+				end
+				exception.raise('shmem', 'memblock', 'not found', name)
+			end, _name, proc, ...)
+		end,
+		delete = function (t, _name)
+			return t.blocks:touch(function (data, name)
+				local e, found
+				for i=0,data.used-1,1 do
+					e = data.list[i]
+					if found then
+						data.list[i - 1] = data.list[i]
+					elseif (ffi.string(e.name) == name) then
+						memory.free(e.name)
+						local typename = ffi.string(e.type)
+						local obj = ffi.cast(typename.."*", e.ptr)
+						local ok, fn = pcall(debug.getmetatable(obj).__index, obj, "fin")
+						if ok then
+							-- print('fin called for', typename)
+							obj:fin()
+						end
+						memory.free(e.type)	
+						memory.free(e.ptr)
+						found = true
+					end
+				end
+				if found then
+					data.used = data.used - 1
+				end
+				return true
+			end, _name)
 		end,
 	}
 })

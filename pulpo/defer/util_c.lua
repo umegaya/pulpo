@@ -8,7 +8,7 @@ local _M = (require 'pulpo.package').module('pulpo.defer.util_c')
 local C = ffi.C
 local ffi_state = loader.load('util.lua', {
 	"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
-	"gettimeofday", "snprintf", "strnlen", "getpid", 
+	"gettimeofday", "snprintf", "strnlen", "strncmp", "getpid", 
 }, {
 	"RLIMIT_NOFILE",
 	"RLIMIT_CORE",
@@ -180,6 +180,9 @@ end
 
 function _M.strlen(p, estsize)
 	return C.strnlen(p, estsize)
+end
+function _M.strcmp(a, b, len)
+	return C.strncmp(a, b, len) == 0
 end
 
 function _M.getarg(ct, ...)

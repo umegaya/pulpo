@@ -161,15 +161,16 @@ function _M.erastic_map(type, name)
 				local e, found
 				for i=0,t.used-1,1 do
 					e = t.list[i]
-					if ffi.string(e.name) == name then
-						found = true
-					elseif found then
+					if found then
 						ffi.copy(t.list[i - 1], t.list[i])
+					elseif ffi.string(e.name) == name then
+						t:delete(e)
+						found = true
 					end
 				end
-				e = t.list[t.used]
-				t:delete(e)
-				t.used = (t.used - 1)
+				if found then
+					t.used = (t.used - 1)
+				end
 			end,
 		}
 	}, name)
