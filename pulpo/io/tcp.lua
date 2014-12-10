@@ -40,7 +40,7 @@ local function tcp_connect(io)
 ::retry::
 	local ctx = io:ctx('pulpo_tcp_context_t*')
 	if ctx.state == STATE.CONNECTING then
-		event.wait(io:event('open'))
+		event.join(io:event('open'))
 		return
 	elseif ctx.state == STATE.CONNECTED then
 		return

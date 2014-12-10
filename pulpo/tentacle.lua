@@ -58,18 +58,18 @@ end
 
 
 -- additional primitive for event module
-function event.select_event(filter, ...)
+function event.wait_event(filter, ...)
 	local ev = event.new()
 	_M(function (f, ...)
-		ev:emit('done', event.select(f, ...))
+		ev:emit('done', event.wait(f, ...))
 	end, filter, ...)
 	return ev
 end
 
-function event.wait_event(timeout, ...)
+function event.join_event(timeout, ...)
 	local ev = event.new()
 	_M(function (t_o, ...)
-		ev:emit('done', event.wait(t_o, ...))
+		ev:emit('done', event.join(t_o, ...))
 	end, timeout, ...)
 	return ev
 end

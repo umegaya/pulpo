@@ -463,11 +463,10 @@ end
 
 -- global share memory
 function _M.shared_memory(k, v)
-	if v then
-		return _shared_memory:find_or_init(k, v)
-	else
-		return _shared_memory:delete(k)
-	end
+	return _shared_memory:find_or_init(k, v)
+end
+function _M.unmap_shared_memory(k)
+	return _shared_memory:delete(k)
 end
 function _M.lock_shared_memory(k, proc, ...)
 	return _shared_memory:touch(k, function (data, fn, ...)

@@ -4,7 +4,7 @@
 
 -- wait one of the following events
 local ignore_close = false
-local type,object = event.select(ignore_close, io:ev('read'), io2:ev('read'), io2:ev('shutdown'), timer.timeout(1000))
+local type,object = event.wait(ignore_close, io:ev('read'), io2:ev('read'), io2:ev('shutdown'), timer.timeout(1000))
 if type == 'read' then
 	if object == io then
 		...
@@ -19,8 +19,8 @@ elseif recv == 'timeout' then
 	print('timeout')
 end
 
--- wait all of following events
-local type_object_tuples = event.wait(1000, io:ev('read'), io2:ev('read'), io3:ev('read'))
+-- join all of following events
+local type_object_tuples = event.join(1000, io:ev('read'), io2:ev('read'), io3:ev('read'))
 for _,tuple in ipairs(type_object_tuples) do
 	print(tuple[1], tuple[2])
 end
@@ -110,10 +110,33 @@ function _M.emit(emitter, type, ...)
 	end
 end
 
+-- provide select syscall for set of events.
+-- selector must be table, which table value key must be event object.
+-- and its value is event handler function, which receive (selector table itself, all args returned from event emitter...)
+-- other kind of key (eg string key) can be any object.
+function _M.select(selector)
+	local co = pulpo_assert(coroutine.running(), "main thread")
+	for k, v in pairs(selector) do
+		if type(k) == 'table' and type(v) == 'function' then
+			table.insert(k.waitq, co)
+			k.pre_yield(k.emitter, k.arg)
+		end
+	end
+	local tmp, rev, ret
+	while true do
+		tmp = {coroutine.yield()}
+		rev = tmp[2]
+		ret = selector[rev](selector, unpack(tmp))
+		if ret then
+			return ret
+		end
+	end
+end
+
 -- wait one of the events specified in ..., is emitted.
 -- you can skip some unnecessary kind of event by filtering with *filter*
 -- if filter returns true, then select returns, otherwise *select* wait for next event to be emitted.
-function _M.select(filter, ...)
+function _M.wait(filter, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
 	pulpo_assert(#list > 0, "no events to wait:"..#list)
@@ -155,16 +178,16 @@ function _M.select(filter, ...)
 	return unpack(tmp)
 end
 
--- wait all event specified in ... 
+-- join all event specified in ... 
 -- actually timeout is not necessary to timeout event
 -- if timeout is not falsy, 
--- *wait* also wait timeout and if it is emitted, all unemitted events are marked as 'timeout'
--- if all events except *timeout*, is emitted, *wait* no more wait for emitting *timeout*.
--- if *timeout* is falsy (nil or false), *wait* just wait for all other event permanently.
+-- *join* also wait timeout and if it is emitted, all unemitted events are marked as 'timeout'
+-- if all events except *timeout*, is emitted, *join* no more wait for emitting *timeout*.
+-- if *timeout* is falsy (nil or false), *join* just wait for all other event permanently.
 -- 
 -- returns array which emitted result in emit order, except result for timeout event object.
 -- it will be placed last of returned array.
-function _M.wait(timeout, ...)
+function _M.join(timeout, ...)
 	local co = pulpo_assert(coroutine.running(), "main thread")
 	local list = {...}
 	if timeout then

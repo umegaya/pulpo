@@ -55,7 +55,7 @@ end
 function taskgrp_index.get_dest_index(t, span)
 	return 1 + ((t.index + span)%t.size)
 end
-function taskgrp_index.tick(t)
+function taskgrp_index.loop(t)
 	if t.stop then return false end
 	if t.index > t.size then
 		t.index = 1
@@ -85,11 +85,13 @@ local function sleep_proc(co)
 	coroutine.resume(co)
 	return false
 end
+-- sleep
 function taskgrp_index.sleep(t, sec)
 	local co = coroutine.running()
 	t:add(sec, sec, sleep_proc, co)
 	coroutine.yield(co)
 end
+-- alarm
 local function alarm_proc(em)
 	em:emit('read')
 	return false
@@ -100,9 +102,26 @@ end
 function taskgrp_index.alarm(t, sec)
 	return event.new(alarm_preyield, {t, sec})
 end
+-- tick
+local function ticker_proc(em)
+	if em.arg.stop then
+		return false
+	end
+	em:emit('read')
+end
+local function ticker_preyield(ev, arg)
+	arg[1]:add(arg[2], arg[2], ticker_proc, ev)
+end
+function taskgrp_index.ticker(t, intv)
+	return event.new(ticker_preyield, {t, intv})
+end
+function taskgrp_index.stop_ticker(t, ev)
+	ev.arg.stop = true
+end
+-- new gropu
 function _M.newgroup(p, intv, max_duration)
 	local tg = taskgrp_new(intv, max_duration)
-	_M.new(p, 0, intv, tg.tick, tg)
+	_M.new(p, 0, intv, tg.loop, tg)
 	return tg
 end
 

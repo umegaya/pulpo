@@ -190,7 +190,7 @@ local function ssl_connect(io)
 	local sslp = ctx.ssl
 ::retry::
 	if ctx.state == STATE.CONNECTING then
-		event.wait(io:event('open'))
+		event.join(io:event('open'))
 		return true
 	elseif ctx.state == STATE.CONNECTED then
 		return true

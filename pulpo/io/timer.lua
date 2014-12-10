@@ -3,7 +3,7 @@
 
 tentacle(function (timer, cb)
 	while true do
-		local type = event.select(timer.ev('tick'))
+		local type = event.wait(timer.ev('tick'))
 		if not cb(timer) then
 			break
 		end
