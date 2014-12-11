@@ -135,7 +135,7 @@ local function raw_iterate_dir(path)
 		if n_read == 0 then
 			break
 		elseif n_read < 0 then
-			exception.raise('syscall', 'dents', ffi.errno(), fd)
+			exception.raise('syscall', 'dents', fd)
 		end
 		last, size = last + n_read, size + n_read
 		local ofs = 0
@@ -194,10 +194,10 @@ function _M.mkdir(path, readonly)
 		end
 		if not _M.exists(tmp) then
 			if C.mkdir(tmp, _M.mode(readonly and '0555' or '0755')) < 0 then
-				exception.raise('syscall', "mkdir", tmp, ffi.errno()) 
+				exception.raise('syscall', "mkdir", tmp) 
 			end
 			if not _M.exists(tmp) then
-				exception.raise('syscall', "mkdir", tmp, ffi.errno()) 
+				exception.raise('syscall', "mkdir", tmp) 
 			end
 		end
 	end
@@ -234,7 +234,16 @@ function _M.mode(modestr)
 	return ffi.new('__uint16_t', tonumber(modestr, "8"))
 end
 function _M.open(path, flags, mode)
-	return C.open(path, flags, mode or O_RDWR)
+	local fd = C.open(path, flags, mode or O_RDWR)
+	if fd <= 0 then
+		exception.raise('syscall', 'open', path)
+	end
+	return fd
+end
+function _M.seek(fd, ofs, whence)
+	if C.lseek(fd, ofs, whence) <= 0 then
+		exception.raise('syscall', 'lseek', fd)
+	end
 end
 function _M.is_dir(path)
 	local st = _M.stat(path)

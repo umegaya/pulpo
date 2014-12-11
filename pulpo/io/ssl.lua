@@ -397,15 +397,15 @@ function _M.listen(p, addr, opts)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
-		raise('syscall', 'setsockopt', errno.errno(), fd)
+		raise('syscall', 'setsockopt', fd)
 	end
 	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
 		C.close(fd)
-		raise('syscall', 'bind', errno.errno(), fd)
+		raise('syscall', 'bind', fd)
 	end
 	if C.listen(fd, poller.config.maxconn) < 0 then
 		C.close(fd)
-		raise('syscall', 'listen', errno.errno(), fd)
+		raise('syscall', 'listen', fd)
 	end
 	logger.info('ssl listen:', fd, addr)
 	popts = memory.alloc_fill_typed('pulpo_ssl_option_t')

@@ -30,7 +30,7 @@ local ffi_state
 exception.define('pthread')
 exception.define('lua', {
 	message = function (t)
-		return ("%s:%d:%s"):format(t.args[1], t.args[2], C.lua_tolstring(t.args[3], -1, nil))
+		return ("%s,%d,%s"):format(t.args[1], t.args[2], ffi.string(C.lua_tolstring(t.args[3], -1, nil)))
 	end,
 })
 
@@ -376,6 +376,7 @@ function _M.create(proc, args, opaque, debug)
 	C.luaL_openlibs(L)
 	local r = C.luaL_loadstring(L, ([[
 	_G.DEBUG = %s
+	package.path = "%s"
 	local ffi = require 'ffiex.init'
 	local thread = require 'pulpo.thread'
 	local memory = require 'pulpo.memory'
@@ -394,6 +395,7 @@ function _M.create(proc, args, opaque, debug)
 	_G.arg = %s
 	]]):format(
 		debug and "true" or "false", 
+		package.path, 
 		string.dump(proc), 
 		util.sprintf("%08x", 16, th),
 		export_cmdl_args()

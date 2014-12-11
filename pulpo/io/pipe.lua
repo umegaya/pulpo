@@ -34,7 +34,7 @@ local function pipe_read(io, ptr, len)
 			return nil
 		else
 			io:close('error')
-			raise('syscall', 'read', eno, io:nfd())
+			raise('syscall', 'read', io:nfd())
 		end
 	end
 	return n
@@ -58,7 +58,7 @@ local function pipe_write(io, ptr, len)
 			return nil
 		else
 			io:close('error')
-			raise('syscall', 'write', eno, io:fd())
+			raise('syscall', 'write', io:fd())
 		end
 	end
 	return n
@@ -79,14 +79,14 @@ function _M.new(p, fds, ctx, opts)
 	if not fds then
 		fds = ffi.new('int[2]')
 		if C.pipe(fds) ~= 0 then
-			raise('syscall', 'pipe', ffi.errno())
+			raise('syscall', 'pipe', fds)
 		end
 	end
 	if socket.setsockopt(fds[0], opts) < 0 then
-		raise('syscall', 'setsockopt', ffi.errno())
+		raise('syscall', 'setsockopt', fds[0])
 	end
 	if socket.setsockopt(fds[1], opts) < 0 then
-		raise('syscall', 'setsockopt', ffi.errno())
+		raise('syscall', 'setsockopt', fds[1])
 	end
 	return p:newio(fds[0], HANDLER_TYPE_RPIPE, ctx), 
 			p:newio(fds[1], HANDLER_TYPE_WPIPE, ctx)

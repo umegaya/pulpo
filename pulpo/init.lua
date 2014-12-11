@@ -60,10 +60,13 @@ local function create_opaque(fn, group, opts)
 		r.proc = memory.strdup(proc)
 		r.plen = #proc
 	end
-	if opts.init_fn then
-		local init_proc = util.encode_proc(opts.init_fn)
+	if opts.init_proc then
+		local init_proc = util.encode_proc(opts.init_proc)
 		r.init_proc = memory.strdup(init_proc)
 		r.init_plen = #init_proc
+	end
+	if opts.init_params then
+		r.init_params = memory.strdup(opts.init_params)
 	end
 	return r
 end
@@ -96,6 +99,7 @@ local function init_cdef()
 			unsigned char noloop, debug;
 			char *group;
 			char *proc, *init_proc;
+			char *init_params;
 			size_t plen, init_plen;
 			pulpo_poller_t *poller;
 		} pulpo_opaque_t;
@@ -123,8 +127,11 @@ local function create_thread(exec, group, arg, opts)
 		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 		if opaque.init_proc ~= ffi.NULL then
 			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
-			init_proc()
+			init_proc(opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
 			memory.free(opaque.init_proc)
+			if opaque.init_params ~= ffi.NULL then
+				memory.free(opaque.init_params)
+			end
 		end
 		memory.free(opaque.proc)
 		if opaque.noloop == 0 then

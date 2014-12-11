@@ -128,10 +128,9 @@ end
 
 
 --> exception
---> exception 
 exception.define('syscall', {
 	message = function (t)
-		return ('%s fails(%d) on %d'):format(t.args[1], t.args[2], t.args[3] or -1)
+		return ('%s fails(%d) on %s'):format(t.args[1], t.args[3] or ffi.errno(), tostring(t.args[2]))
 	end,
 })
 exception.define('pipe', {

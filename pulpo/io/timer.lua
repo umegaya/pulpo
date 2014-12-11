@@ -87,7 +87,7 @@ _M.original_socket = socket.unix_domain()
 function _M.new(p, start, intv, ctx)
 	local fd = socket.dup(_M.original_socket)
 	if not fd then 
-		raise('syscall', 'dup', errno.errno()) 
+		raise('syscall', 'dup', _M.original_socket) 
 	end
 	if not p:add_timer(fd, start, intv) then 
 		C.close(fd)
@@ -133,14 +133,14 @@ _M.itimerspec = ffi.new('struct itimerspec[1]')
 function _M.new(p, start, intv, ctx)
 	local fd = C.timerfd_create(CLOCK_MONOTONIC, 0)
 	if fd < 0 then
-		raise('syscall', 'timerfd_create', errno.errno())
+		raise('syscall', 'timerfd_create', 'CLOCK_MONOTONIC')
 	end
 	if socket.setsockopt(fd) < 0 then
-		raise('syscall', 'setsockopt', errno.errno())
+		raise('syscall', 'setsockopt', fd)
 	end
 	if rt.clock_gettime(CLOCK_MONOTONIC, _M.current) < 0 then
 		C.close(fd)
-		raise('syscall', 'clock_gettime', errno.errno())
+		raise('syscall', 'clock_gettime', fd)
 	end
 	util.sec2timespec(start, _M.start)
 	util.sec2timespec(intv, _M.intv)
@@ -154,7 +154,7 @@ function _M.new(p, start, intv, ctx)
 	_M.itimerspec[0].it_value = _M.start[0]
 	if C.timerfd_settime(fd, TFD_TIMER_ABSTIME, _M.itimerspec, nil) < 0 then
 		C.close(fd)
-		raise('syscall', 'timerfd_settime', errno.errno())
+		raise('syscall', 'timerfd_settime', fd)
 	end
 	logger.info('timer:', fd, start, intv, HANDLER_TYPE_TIMER)
 	

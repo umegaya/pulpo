@@ -62,7 +62,7 @@ local function tcp_connect(io)
 			goto retry
 		else
 			io:close('error')
-			raise('syscall', 'connect', eno, io:nfd())
+			raise('syscall', 'connect', io:nfd())
 		end
 	end
 	ctx.state = STATE.CONNECTED
@@ -95,7 +95,7 @@ local function tcp_read(io, ptr, len)
 			goto retry
 		else
 			io:close('error')
-			raise('syscall', 'read', eno, io:nfd())
+			raise('syscall', 'read', io:nfd())
 		end
 	end
 	return n
@@ -128,7 +128,7 @@ local function on_write_error(io, ret)
 		end	
 	else
 		io:close('error')
-		raise('syscall', 'write', eno, io:nfd())
+		raise('syscall', 'write', io:nfd())
 	end
 	return true
 end
@@ -183,7 +183,7 @@ local function tcp_accept(io)
 			end
 			goto retry
 		else
-			raise('syscall', 'accept', eno, io:nfd())
+			raise('syscall', 'accept', io:nfd())
 		end
 	else
 		-- apply same setting as server 
@@ -211,7 +211,7 @@ function _M.connect(p, addr, opts)
 	ctx.state = STATE.INIT
 	local fd = socket.stream(addr, opts, ctx.addrinfo)
 	if not fd then 
-		raise('syscall', 'socket', errno.errno()) 
+		raise('syscall', 'socket', 'create stream') 
 	end
 	local io = p:newio(fd, HANDLER_TYPE_TCP, ctx)
 	event.add_to(io, 'open')
@@ -225,15 +225,15 @@ function _M.listen(p, addr, opts)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
-		raise('syscall', 'setsockopt', errno.errno(), fd)
+		raise('syscall', 'setsockopt', fd)
 	end
 	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
 		C.close(fd)
-		raise('syscall', 'bind', errno.errno(), fd)
+		raise('syscall', 'bind', fd)
 	end
 	if C.listen(fd, poller.config.maxconn) < 0 then
 		C.close(fd)
-		raise('syscall', 'listen', errno.errno(), fd)
+		raise('syscall', 'listen', fd)
 	end
 	logger.info('listen:', fd, addr, p)
 	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts) or nil)
