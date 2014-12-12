@@ -10,7 +10,7 @@ local clock = pulpo.clock
 local tcp = loop.io.tcp
 local clock = loop.clock.new(0.05, 10)
 
-pulpo.tentacle.debug = true
+pulpo.tentacle.DEBUG = true
 
 -- all routine enclosed by tentacle
 pulpo.tentacle(function ()
@@ -63,7 +63,7 @@ local ev = pulpo.tentacle(function ()
 	end
 end)
 
-logger.info('--------------------------- select with filter test')
+logger.info('--------------------------- wait with filter test')
 local finished 
 local tp,obj,ok,ret = event.wait(false, pulpo.tentacle(function ()
 	local s1, s2, s3 = 
@@ -103,7 +103,7 @@ logger.info("wait result", tp,obj,ok,ret)
 assert(tp == "end" and ok == true and ret == "bar", "something wrong with event processing")
 assert(finished, "event.join should block until above tentacle done")
 
-logger.info('--------------------------- wait test')
+logger.info('--------------------------- join test')
 event.join(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect("127.0.0.1:8008"),	
@@ -132,7 +132,7 @@ event.join(pulpo.tentacle(function ()
 	end
 end))
 
-logger.info('--------------------------- wait_event test1')
+logger.info('--------------------------- join_event test1')
 event.join(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect("127.0.0.1:8008"),	
@@ -149,7 +149,7 @@ event.join(pulpo.tentacle(function ()
 	assert(type=="read" and alarm == object)
 end))
 
-logger.info('--------------------------- wait_event test2')
+logger.info('--------------------------- join_event test2')
 event.join(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect("127.0.0.1:8008"),	
@@ -181,7 +181,7 @@ event.join(pulpo.tentacle(function ()
 	end
 end))
 
-logger.info('--------------------------- timed wait test1')
+logger.info('--------------------------- timed join test1')
 event.join(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect("127.0.0.1:8008"),	
@@ -219,7 +219,7 @@ event.join(pulpo.tentacle(function ()
 	end
 end))
 
-logger.info('--------------------------- timed wait test2')
+logger.info('--------------------------- timed join test2')
 event.join(pulpo.tentacle(function ()
 	local s1, s2, s3 = 
 		tcp.connect("127.0.0.1:8008"),	

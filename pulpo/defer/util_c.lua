@@ -161,18 +161,19 @@ function _M.create_proc(executable)
 	return _M.decode_proc(_M.encode_proc(executable))
 end
 
-local sprintf_workmem
-local sprintf_workmem_size = 0
+local fmt_buf = {}
+local fmt_buf_index = 0
+local fmt_buf_num = 16
+local fmt_buf_size = {}
 function _M.rawsprintf(fmt, size, ...)
-	if sprintf_workmem_size < (size + 1) then
-		if sprintf_workmem then
-			memory.free(sprintf_workmem)
-		end
-		sprintf_workmem = memory.alloc_typed('char', size + 1)
-		sprintf_workmem_size = size + 1
+	if not fmt_buf[fmt_buf_index] or (fmt_buf_size[fmt_buf_index] < (size + 1)) then
+		fmt_buf[fmt_buf_index] = memory.realloc_typed('char', fmt_buf[fmt_buf_index] or ffi.NULL, size + 1)
+		fmt_buf_size[fmt_buf_index] = size + 1
 	end
-	local n = C.snprintf(sprintf_workmem, size + 1, fmt, ...)
-	return sprintf_workmem, n
+	local p = fmt_buf[fmt_buf_index]
+	local n = C.snprintf(p, size + 1, fmt, ...)
+	fmt_buf_index = ((fmt_buf_index + 1) % fmt_buf_num)
+	return p, n
 end
 function _M.sprintf(fmt, size, ...)
 	return ffi.string(_M.rawsprintf(fmt, size, ...))

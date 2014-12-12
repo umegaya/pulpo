@@ -39,7 +39,7 @@ local readlist, writelist = {}, {}
 local ev_index = {}
 local ev_mt = { __index = ev_index }
 function ev_index.emit(t, type, ...)
-	-- logger.notice('evemit:', t, type, #t.waitq)
+-- logger.notice('evemit:', t, type, #t.waitq, debug.traceback())
 	for _,co in ipairs(t.waitq) do
 		-- waitq cleared inside resumed functions
 		coroutine.resume(co, type, t, ...)
@@ -110,6 +110,16 @@ function _M.emit(emitter, type, ...)
 	end
 end
 
+local function unregister_thread(ev, co)
+	for i=1,#ev.waitq do
+		if ev.waitq[i] == co then
+			-- print('remove coro from event', k, co)
+			table.remove(ev.waitq, i)
+			break
+		end
+	end
+end
+
 -- provide select syscall for set of events.
 -- selector must be table, which table value key must be event object.
 -- and its value is event handler function, which receive (selector table itself, all args returned from event emitter...)
@@ -122,15 +132,19 @@ function _M.select(selector)
 			k.pre_yield(k.emitter, k.arg)
 		end
 	end
-	local tmp, rev, ret
+	local tmp, rev, ok, ret
 	while true do
 		tmp = {coroutine.yield()}
 		rev = tmp[2]
-		ret = selector[rev](selector, unpack(tmp))
-		if ret then
-			return ret
+		ok, ret = pcall(selector[rev], selector, unpack(tmp))
+		if (not ok) or ret then break end
+	end
+	for k, v in pairs(selector) do
+		if type(k) == 'table' and type(v) == 'function' then
+			unregister_thread(k, co)
 		end
 	end
+	return ok, ret
 end
 
 -- wait one of the events specified in ..., is emitted.
@@ -167,12 +181,7 @@ function _M.wait(filter, ...)
 			assert(co == ev.waitq[1])
 			table.remove(ev.waitq, 1)
 		else
-			for j=1,#ev.waitq,1 do
-				local elem = ev.waitq[j]
-				if elem == co then
-					table.remove(ev.waitq, j)
-				end
-			end
+			unregister_thread(ev, co)
 		end
 	end
 	return unpack(tmp)
@@ -197,7 +206,7 @@ function _M.join(timeout, ...)
 	for i=1,#list,1 do
 		local ev = list[i]
 		table.insert(ev.waitq, co)
-		--logger.notice(ev, "waitq:", #ev.waitq)
+		-- logger.notice(ev, "waitq:", #ev.waitq, co)
 		ev.pre_yield(ev.emitter, ev.arg)
 	end
 	local ret = {}
@@ -216,12 +225,7 @@ function _M.join(timeout, ...)
 				if rev ~= ev then
 					table.insert(ret, {'timeout', ev.emitter})
 				end
-				for j=1,#ev.waitq,1 do
-					local elem = ev.waitq[j]
-					if elem == co then
-						table.remove(ev.waitq, j)
-					end
-				end
+				unregister_thread(ev, co)
 			end
 			table.insert(ret, tmp)
 			return ret
@@ -239,12 +243,14 @@ function _M.join(timeout, ...)
 			emit = emit + 1
 			--print('status:', emit, required)
 			if emit >= required then
+				-- maybe timeout remain
 				break
 			end
 		end
 	end
 	if timeout then
 		table.insert(ret, {'ontime', timeout.emitter})
+		unregister_thread(timeout, co)
 	end
 	return ret
 end

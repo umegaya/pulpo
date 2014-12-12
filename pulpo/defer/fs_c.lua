@@ -33,7 +33,7 @@ local macros = {
 local cdecls = { 
 	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t", "open", "fsync", 
 	"stat", "mkdir", "rmdir", "struct stat", "fileno", "unlink", "syscall", 
-	"lseek", 
+	"lseek", "rename", 
 }
 if ffi.os == "OSX" then
 	table.insert(macros, "SYS_stat64")
@@ -226,6 +226,11 @@ function _M.rm(path)
 end
 function _M.fileno(io)
 	return C.fileno(io)
+end
+function _M.rename(old, new)
+	if C.rename(old, new) < 0 then
+		exception.raise('syscall', 'rename', ffi.string(old))
+	end
 end
 function _M.mode(modestr)
 	if modestr:byte() ~= ("0"):byte() then

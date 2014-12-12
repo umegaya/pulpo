@@ -9,11 +9,34 @@ local coro_mt = {
 	__index = coro,
 }
 local cache = {}
+local function err_handler(e)
+	if type(e) == 'table' then
+		logger.report('tentacle result:', e)
+	else
+		logger.report('tentacle result:', tostring(e), debug.traceback())
+	end
+	return e
+end
+local function loop(co)
+if false and _M.DEBUG then
+	print('coro:yield enter', co[1])
+	local ret = {coroutine.yield()}
+	print('coro:yield result', co[1], unpack(ret))
+	ret = {xpcall(unpack(ret))}
+	print('coro:main', co[1], unpack(ret))
+	co[2]:emit('end', unpack(ret))
+	print('coro:main notice end', co[1])
+else
+	co[2]:emit('end', xpcall(coroutine.yield()))
+end
+end
 local function main(co)
-	while true do
-		co[2]:emit('end', xpcall(coroutine.yield()))
+	while xpcall(loop, err_handler, co) do
 		table.insert(cache, co)
 	end
+if _M.DEBUG then
+	(require 'pulpo.exception').raise('fatal', "in debug env, tentacle loop never fails")
+end
 end
 function coro.new()
 	if #cache > 0 then
@@ -32,13 +55,6 @@ function coro:run(f, ...)
 	return select(2, coroutine.resume(self[1], f, ...))
 end
 
-local function err_handler(e)
-	if type(e) == 'table' then
-		logger.report('tentacle result:', e)
-	else
-		logger.report('tentacle result:', tostring(e), debug.traceback())
-	end
-end
 function metatable.__call(t, body, ...)
 	local c = coro.new()
 	coro.run(c, body, err_handler, ...)
