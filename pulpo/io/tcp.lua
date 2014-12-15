@@ -203,7 +203,11 @@ local function tcp_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_writev, tcp_writef)
+local function tcp_addrinfo(io)
+	return io:ctx('pulpo_tcp_context_t*').addrinfo
+end
+
+HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_addrinfo, tcp_writev, tcp_writef)
 HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tcp_gc)
 
 function _M.connect(p, addr, opts)

@@ -201,7 +201,6 @@ _M.ntohs = _M.htons
 _M.ntohl = _M.htonl
 
 --> misc network function
---> this (and 'default' below), and all the upvalue of module function
 --> may seems functions not to be reentrant, but actually when luact runs with multithread mode, 
 --> independent state is assigned to each thread. so its actually reentrant and thread safe.
 local addrinfo_buffer = ffi.new('struct addrinfo * [1]')
@@ -220,7 +219,7 @@ function _M.inet_hostbyname(addr, addrp, socktype)
 		return -2
 	end
 	-- TODO : is it almost ok to use first entry of addrinfo?
-	-- but create socket and try to bind/connect seems costly for checking
+	-- create socket and try to bind/connect seems costly for checking
 	ab = addrinfo_buffer[0]
 	af = ab.ai_family
 	protocol = ab.ai_protocol
@@ -238,30 +237,33 @@ function _M.inet_namebyhost(addrp, withport, dst, len)
 		dst = ffi.new('char[256]')
 		len = 256
 	end
-	local sa = ffi.cast('struct sockaddr*', addrp)
+	local sa = ffi.cast('struct sockaddr_in*', addrp)
 	local p = C.inet_ntop(sa.sin_family, addrp, dst, len)
 	if p == ffi.NULL then
-		return "invalid addr data"
+		exception.raise('invalid', 'addr data', ffi.errno())
 	else
 		return ffi.string(dst)..(withport and (":"..tostring(_M.ntohs(sa.sin_port))) or "")
 	end
 end
+local sockaddr_buf_work = ffi.new('pulpo_addrinfo_t[1]')
 function _M.inet_peerbyfd(fd, dst, len)
 	if not dst then
-		dst = ffi.cast('struct sockaddr*', memory.alloc(ffi.sizeof('pulpo_addrinfo_t')))
+		dst = ffi.cast('struct sockaddr*', sockaddr_buf_work)
 		len = ffi.sizeof('pulpo_addrinfo_t')
 	end
-	if C.getpeername(fd, sa, len) ~= 0 then
+	sockaddr_buf_work.len[0] = len
+	if (C.getpeername(fd, sa, sockaddr_buf_work.len) ~= 0) and (sockaddr_buf_work.len[0] < len) then
 		return nil
 	end
 	return sa
 end
 function _M.inet_namebyfd(fd, dst, len)
 	if not dst then
-		dst = ffi.cast('struct sockaddr*', memory.alloc(ffi.sizeof('pulpo_addrinfo_t')))
+		dst = ffi.cast('struct sockaddr*', sockaddr_buf_work)
 		len = ffi.sizeof('pulpo_addrinfo_t')
 	end
-	if C.getsockname(fd, sa, len) ~= 0 then
+	sockaddr_buf_work.len[0] = len
+	if (C.getsockname(fd, sa, sockaddr_buf_work.len) ~= 0) and (sockaddr_buf_work.len[0] < len) then
 		return nil
 	end
 	return sa
@@ -276,6 +278,12 @@ function _M.numeric_ipv4_addr_by_host(host)
 	else
 		exception.raise('invalid', 'address', host)
 	end
+end
+function _M.host_by_numeric_ipv4_addr(addr)
+	local sa = ffi.cast('struct sockaddr_in*', sockaddr_buf)
+	sa.sin_addr.s_addr = addr
+	sa.sin_family = AF_INET
+	return _M.inet_namebyhost(sockaddr_buf, false)
 end
 
 function _M.getifaddr(ifname_filters, address_family)
@@ -407,7 +415,7 @@ function _M.port_reusable()
 end
 
 function _M.stream(addr, opts, addrinfo)
-	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp)
+	local r, af = _M.inet_hostbyname(addr, addrinfo.addrp, SOCK_STREAM)
 	if r <= 0 then
 		logger.error('invalid address:', addr)
 		return nil

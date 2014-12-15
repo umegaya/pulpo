@@ -39,9 +39,13 @@ function _M.rmdir(path)
 	os.execute(('rm -rf %s'):format(path))
 end
 
-function _M.merge_table(t1, t2)
+function _M.merge_table(t1, t2, deep)
 	for k,v in pairs(t2) do
-		t1[k] = v
+		if deep and type(t1[k]) == 'table' and type(v) == 'table' then
+			_M.merge_table(t1[k], v)
+		else
+			t1[k] = v
+		end
 	end
 	return t1
 end
@@ -85,6 +89,7 @@ function _M.random_k_from(t, k)
 	end
 end
 
+math.randomseed(os.clock())
 function _M.random(start_n, end_n)
 	return math.random(start_n, end_n)
 end

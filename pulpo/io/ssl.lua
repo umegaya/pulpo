@@ -330,8 +330,11 @@ end
 local function ssl_server_gc(io)
 	C.close(io:fd())
 end
+local function ssl_addrinfo(io)
+	return io:ctx('pulpo_ssl_context_t*').addrinfo
+end
 
-HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addrinfo)
 HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
