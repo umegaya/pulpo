@@ -130,36 +130,6 @@ function _M.clock_pair()
 	C.gettimeofday(_M.tval, nil)
 	return _M.tval[0].tv_sec, _M.tval[0].tv_usec
 end
---> transfer executable information through string
-function _M.decode_proc(code)
-	local executable
-	local f, err = loadstring(code)
-	if f then
-		executable = f
-	else
-		f, err = loadfile(code)
-		if f then
-			executable = f
-		else
-			executable = function ()
-				local ok, r = pcall(require, code)
-				--if not ok then error(r) end
-			end
-		end
-	end
-	return executable
-end
-function _M.encode_proc(proc)
-	if type(proc) == "string" then
-		return proc
-	elseif type(proc) ~= "function" then
-		error('invalid executable:'..type(proc))
-	end
-	return string.dump(proc)
-end
-function _M.create_proc(executable)
-	return _M.decode_proc(_M.encode_proc(executable))
-end
 
 local fmt_buf = {}
 local fmt_buf_index = 0

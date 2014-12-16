@@ -94,4 +94,35 @@ function _M.random(start_n, end_n)
 	return math.random(start_n, end_n)
 end
 
+--> transfer executable information through string
+function _M.decode_proc(code)
+	local executable
+	local f, err = loadstring(code)
+	if f then
+		executable = f
+	else
+		f, err = loadfile(code)
+		if f then
+			executable = f
+		else
+			executable = function ()
+				local ok, r = pcall(require, code)
+				--if not ok then error(r) end
+			end
+		end
+	end
+	return executable
+end
+function _M.encode_proc(proc)
+	if type(proc) == "string" then
+		return proc
+	elseif type(proc) ~= "function" then
+		error('invalid executable:'..type(proc))
+	end
+	return string.dump(proc)
+end
+function _M.create_proc(executable)
+	return _M.decode_proc(_M.encode_proc(executable))
+end
+
 return _M
