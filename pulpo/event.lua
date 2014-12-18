@@ -31,7 +31,9 @@ io:emit('read')
 ]]
 
 local ffi = require 'ffi'
+local tentacle = require 'pulpo.tentacle'
 local _M = {}
+tentacle.event = _M
 
 local eventlist = {}
 local readlist, writelist = {}, {}
@@ -39,10 +41,10 @@ local readlist, writelist = {}, {}
 local ev_index = {}
 local ev_mt = { __index = ev_index }
 function ev_index.emit(t, type, ...)
--- logger.notice('evemit:', t, type, #t.waitq, debug.traceback())
+-- logger.notice('evemit:', t, type, ...)
 	for _,co in ipairs(t.waitq) do
 		-- waitq cleared inside resumed functions
-		coroutine.resume(co, type, t, ...)
+		tentacle.resume(co, type, t, ...)
 	end
 end
 function ev_index.destroy(t, reason)
@@ -98,7 +100,7 @@ end
 function _M.emit_destroy(emitter, ev, reason)
 	for _,co in ipairs(ev.waitq) do
 		-- waitq cleared inside resumed functions
-		coroutine.resume(co, 'destroy', emitter, reason)
+		tentacle.resume(co, 'destroy', emitter, reason)
 	end
 end	
 
@@ -106,7 +108,7 @@ function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
 	local ev = eventlist[id][type] -- assert(eventlist[id][type], "event not created "..type)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, type, ev, ...)
+		tentacle.resume(co, type, ev, ...)
 	end
 end
 
@@ -119,22 +121,31 @@ local function unregister_thread(ev, co)
 		end
 	end
 end
+_M.unregister_thread = unregister_thread
 
 -- provide select syscall for set of events.
 -- selector must be table, which table value key must be event object.
 -- and its value is event handler function, which receive (selector table itself, all args returned from event emitter...)
 -- other kind of key (eg string key) can be any object.
+function selector_cancel(t, co)
+	for k, v in pairs(t) do
+		if type(k) == 'table' and type(v) == 'function' then
+			unregister_thread(k, co)
+		end
+	end	
+end
 function _M.select(selector)
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	for k, v in pairs(selector) do
 		if type(k) == 'table' and type(v) == 'function' then
 			table.insert(k.waitq, co)
 			k.pre_yield(k.emitter, k.arg)
 		end
 	end
+	selector.__cancel = selector_cancel
 	local tmp, rev, ok, ret
 	while true do
-		tmp = {coroutine.yield()}
+		tmp = {tentacle.yield(selector)}
 		rev = tmp[2]
 		ok, ret = pcall(selector[rev], selector, unpack(tmp))
 		if (not ok) or ret then break end
@@ -150,8 +161,13 @@ end
 -- wait one of the events specified in ..., is emitted.
 -- you can skip some unnecessary kind of event by filtering with *filter*
 -- if filter returns true, then select returns, otherwise *select* wait for next event to be emitted.
+function wait_list_cancel(t, co)
+	for i=1,#t do
+		unregister_thread(t[i], co)
+	end	
+end
 function _M.wait(filter, ...)
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local list = {...}
 	pulpo_assert(#list > 0, "no events to wait:"..#list)
 	for i=1,#list,1 do
@@ -159,9 +175,10 @@ function _M.wait(filter, ...)
 		table.insert(ev.waitq, co)
 		ev.pre_yield(ev.emitter, ev.arg)
 	end
+	list.__cancel = wait_list_cancel
 	local tmp, rev
 	while true do
-		tmp = {coroutine.yield()}
+		tmp = {tentacle.yield(list)}
 		if not filter then break end
 		rev = tmp[2]
 		tmp[2] = rev.emitter
@@ -197,7 +214,7 @@ end
 -- returns array which emitted result in emit order, except result for timeout event object.
 -- it will be placed last of returned array.
 function _M.join(timeout, ...)
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local list = {...}
 	if timeout then
 		table.insert(list, timeout)
@@ -209,12 +226,13 @@ function _M.join(timeout, ...)
 		-- logger.notice(ev, "waitq:", #ev.waitq, co)
 		ev.pre_yield(ev.emitter, ev.arg)
 	end
+	list.__cancel = wait_list_cancel
 	local ret = {}
 	-- -1 for timeout event (its not necessary to emit)
 	local emit,required = 0,timeout and (#list - 1) or #list
 	while true do
-		local tmp = {coroutine.yield()}
-		-- print('wait emit:', unpack(tmp), debug.traceback())
+		local tmp = {tentacle.yield(list)}
+		-- logger.warn('wait emit:', unpack(tmp))
 		local rev = tmp[2]
 		tmp[2] = rev.emitter
 		if timeout and rev == timeout then
@@ -277,21 +295,21 @@ end
 
 -- if return false, pipe error caused
 function _M.wait_read(io)
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local ev = _M.ev_read(io)
 	table.insert(ev.waitq, co)
 	io:read_yield()
-	local t = coroutine.yield()
+	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
 	return t ~= 'destroy'
 end
 
 function _M.wait_emit(io)
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local ev = _M.ev_read(io)
 	table.insert(ev.waitq, co)
-	local t = coroutine.yield()
+	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
 	return t
@@ -301,7 +319,7 @@ function _M.emit_read(io)
 	-- print('emit_read', io:fd())
 	local ev = _M.ev_read(io)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'read', ev)
+		tentacle.resume(co, 'read', ev)
 	end
 end
 
@@ -324,11 +342,11 @@ end
 -- if return false, pipe error caused
 function _M.wait_write(io)
 	-- print('wait_write', io:fd(), debug.traceback())
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
 	io:write_yield()
-	local t = coroutine.yield()
+	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
 	return t ~= 'destroy'
@@ -337,10 +355,10 @@ end
 -- if return false, pipe error caused
 function _M.wait_reactivate_write(io)
 	-- print('wait_write', io:fd(), debug.traceback())
-	local co = pulpo_assert(coroutine.running(), "main thread")
+	local co = pulpo_assert(tentacle.running(), "main thread")
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
-	local t = coroutine.yield()
+	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
 	table.remove(ev.waitq, 1)
 	return t ~= 'destroy'
@@ -350,13 +368,30 @@ function _M.emit_write(io)
 	-- print('emit_write:', io:fd())
 	local ev = _M.ev_write(io)
 	for _,co in ipairs(ev.waitq) do
-		coroutine.resume(co, 'write', ev)
+		tentacle.resume(co, 'write', ev)
 	end
 end
 
 function _M.add_io_events(io)
 	_M.add_read_to(io)
 	_M.add_write_to(io)
+end
+
+-- additional primitive for event module
+function _M.wait_event(filter, ...)
+	local ev = _M.new()
+	tentacle(function (f, ...)
+		ev:emit('done', _M.wait(f, ...))
+	end, filter, ...)
+	return ev
+end
+
+function _M.join_event(timeout, ...)
+	local ev = _M.new()
+	tentacle(function (t_o, ...)
+		ev:emit('done', _M.join(t_o, ...))
+	end, timeout, ...)
+	return ev
 end
 
 return _M

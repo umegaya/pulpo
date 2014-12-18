@@ -63,6 +63,10 @@ function io_index.close(t, reason)
 	-- logger.info("fd=", t:fd(), " closed by user")
 	t:fin(reason)
 end
+function io_index.__cancel(t, co)
+	event.unregister_thread(event.ev_read(t), co)
+	event.unregister_thread(event.ev_write(t), co)
+end
 io_index.emit = event.emit
 io_index.event = event.get
 

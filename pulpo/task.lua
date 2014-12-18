@@ -1,4 +1,5 @@
 local timer = require 'pulpo.io.timer'
+local tentacle = require 'pulpo.tentacle'
 local event = require 'pulpo.event'
 local _M = {}
 ------------------------------------------------------------
@@ -6,31 +7,31 @@ local _M = {}
 ------------------------------------------------------------
 
 -- task
+local function proc(tm, fn, ...)
+	while true do
+		local n = tm:read()
+		if not n then
+			logger.info('timer:', io:fd(), 'closed by event:', tp)
+			goto exit
+		end
+		for i=1,tonumber(n),1 do
+			if fn(...) == false then
+				logger.info('timer:', io:fd(), 'closed by user')
+				goto exit
+			end
+		end
+	end
+	::exit::
+end
 function _M.new(p, start, intv, cb, ...)
 	local io = timer.new(p, start, intv)
-	coroutine.wrap(function (_tm, _fn, ...)
-		local function proc(tm, fn, ...)
-			while true do
-				local n = tm:read()
-				if not n then
-					logger.info('timer:', io:fd(), 'closed by event:', tp)
-					goto exit
-				end
-				for i=1,tonumber(n),1 do
-					if fn(...) == false then
-						logger.info('timer:', io:fd(), 'closed by user')
-						goto exit
-					end
-				end
-			end
-			::exit::
-		end
+	tentacle(function (_tm, _fn, ...)
 		local ok, r = pcall(proc, _tm, _fn, ...)
 		if not ok then
 			logger.error("timer proc fails:"..r)
 		end
-		tm:close()
-	end)(io, cb, ...)
+		_tm:close()
+	end, io, cb, ...)
 end
 
 -- task group
@@ -74,22 +75,32 @@ end
 function taskgrp_index.close(t)
 	t.stop = true
 end
+local task_element_mt = { __index = {} }
+function task_element_mt.__index:__cancel(co)
+	for i=1,#self[4] do
+		if self[4][i].arg == co then
+			table.remove(self.q, i)
+			break
+		end
+	end
+end
 function taskgrp_index.add(t, start, intv, fn, arg)
 	local sidx = t:get_duration_index(start)
 	local iidx = t:get_duration_index(intv)
 	local dest = t:get_dest_index(sidx)
 	local q = t.queue[dest]
-	table.insert(q, {iidx, fn, arg})
+	local r = setmetatable({iidx, fn, arg, q}, task_element_mt)
+	table.insert(q, r)
+	return r
 end
 local function sleep_proc(co)
-	coroutine.resume(co)
+	tentacle.resume(co)
 	return false
 end
 -- sleep
 function taskgrp_index.sleep(t, sec)
-	local co = coroutine.running()
-	t:add(sec, sec, sleep_proc, co)
-	coroutine.yield(co)
+	local co = tentacle.running()
+	tentacle.yield(t:add(sec, sec, sleep_proc, co))
 end
 -- alarm
 local function alarm_proc(em)

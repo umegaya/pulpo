@@ -286,6 +286,19 @@ event.join(pulpo.tentacle(function ()
 	clock:stop_ticker(t3)
 end))
 
+logger.info('--------------------------- tentacle cancel test')
+local v1, v2
+local t1 = pulpo.tentacle(function ()
+	clock:sleep(2)
+	v1 = true
+end)
+local t2 = pulpo.tentacle(function ()
+	clock:sleep(2)
+end)
+pulpo.tentacle.cancel(t2)
+clock:sleep(3)
+assert(v1 and (not v2))
+print(v1, v2)
 --- end of main tentacle
 loop:stop()
 end)
