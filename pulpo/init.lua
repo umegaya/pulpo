@@ -115,6 +115,21 @@ local function init_shared_memory()
 		} pulpo_thread_idseed_t;
 	]]
 	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	_M.logger_mutex = _M.shared_memory("__logger_mutex__", function ()
+		local mutex = memory.alloc_typed('pthread_mutex_t')
+		PT.pthread_mutex_init(mutex, nil)
+		return 'pthread_mutex_t', mutex
+	end)
+	-- make default logger thread safe
+	log.redirect("default", function (setting, ...)
+		PT.pthread_mutex_lock(_M.logger_mutex)
+		term[setting.color]()
+		io.write(logpfx)
+		print(...)
+		term.resetcolor()
+		io.stdout:flush()
+		PT.pthread_mutex_unlock(_M.logger_mutex)
+	end)
 end
 
 local function create_thread(exec, group, arg, opts)
