@@ -40,11 +40,9 @@ local readlist, writelist = {}, {}
 
 local ev_index = {}
 local ev_mt = { __index = ev_index }
-function ev_index.emit(t, type, ...)
--- logger.notice('evemit:', t, type, ...)
-	for _,co in ipairs(t.waitq) do
-		-- waitq cleared inside resumed functions
-		tentacle.resume(co, type, t, ...)
+function ev_index.emit(t, typ, ...)
+	for i=#t.waitq,1,-1 do
+		tentacle.resume(t.waitq[i], typ, t, ...)
 	end
 end
 function ev_index.destroy(t, reason)
@@ -98,24 +96,24 @@ function _M.destroy(emitter, reason)
 end
 
 function _M.emit_destroy(emitter, ev, reason)
-	for _,co in ipairs(ev.waitq) do
+	for i=#ev.waitq,1,-1 do
 		-- waitq cleared inside resumed functions
-		tentacle.resume(co, 'destroy', emitter, reason)
+		tentacle.resume(ev.waitq[i], 'destroy', emitter, reason)
 	end
 end	
 
 function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
 	local ev = eventlist[id][type] -- assert(eventlist[id][type], "event not created "..type)
-	for _,co in ipairs(ev.waitq) do
-		tentacle.resume(co, type, ev, ...)
+	for i=#ev.waitq,1,-1 do
+		tentacle.resume(ev.waitq[i], type, ev, ...)
 	end
 end
 
 local function unregister_thread(ev, co)
 	for i=1,#ev.waitq do
 		if ev.waitq[i] == co then
-			-- print('remove coro from event', k, co)
+			logger.report('remove coro from event', i, co)
 			table.remove(ev.waitq, i)
 			break
 		end
@@ -195,8 +193,8 @@ function _M.wait(filter, ...)
 	for i=1,#list,1 do
 		local ev = list[i]
 		if rev == ev then
-			assert(co == ev.waitq[1])
-			table.remove(ev.waitq, 1)
+			assert(co == ev.waitq[#ev.waitq])
+			table.remove(ev.waitq)
 		else
 			unregister_thread(ev, co)
 		end
@@ -253,8 +251,8 @@ function _M.join(timeout, ...)
 				local ev = list[i]
 				if rev == ev then
 					table.remove(list, i)
-					assert(co == ev.waitq[1])
-					table.remove(ev.waitq, 1)
+					assert(co == ev.waitq[#ev.waitq])
+					table.remove(ev.waitq)
 					break
 				end
 			end
@@ -301,7 +299,7 @@ function _M.wait_read(io)
 	io:read_yield()
 	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
-	table.remove(ev.waitq, 1)
+	table.remove(ev.waitq)
 	return t ~= 'destroy'
 end
 
@@ -311,15 +309,15 @@ function _M.wait_emit(io)
 	table.insert(ev.waitq, co)
 	local t = tentacle.yield(io)
 	assert(ev.waitq[1] == co)
-	table.remove(ev.waitq, 1)
+	table.remove(ev.waitq)
 	return t
 end
 
 function _M.emit_read(io)
 	-- print('emit_read', io:fd())
 	local ev = _M.ev_read(io)
-	for _,co in ipairs(ev.waitq) do
-		tentacle.resume(co, 'read', ev)
+	for i=#ev.waitq,1,-1 do
+		tentacle.resume(ev.waitq[i], 'read', ev)
 	end
 end
 
@@ -347,8 +345,8 @@ function _M.wait_write(io)
 	table.insert(ev.waitq, co)
 	io:write_yield()
 	local t = tentacle.yield(io)
-	assert(ev.waitq[1] == co)
-	table.remove(ev.waitq, 1)
+	assert(ev.waitq[#ev.waitq] == co)
+	table.remove(ev.waitq)
 	return t ~= 'destroy'
 end
 
@@ -359,16 +357,16 @@ function _M.wait_reactivate_write(io)
 	local ev = _M.ev_write(io)
 	table.insert(ev.waitq, co)
 	local t = tentacle.yield(io)
-	assert(ev.waitq[1] == co)
-	table.remove(ev.waitq, 1)
+	assert(ev.waitq[#ev.waitq] == co)
+	table.remove(ev.waitq)
 	return t ~= 'destroy'
 end
 
 function _M.emit_write(io)
 	-- print('emit_write:', io:fd())
 	local ev = _M.ev_write(io)
-	for _,co in ipairs(ev.waitq) do
-		tentacle.resume(co, 'write', ev)
+	for i=#ev.waitq,1,-1 do
+		tentacle.resume(ev.waitq[i], 'write', ev)
 	end
 end
 

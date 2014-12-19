@@ -84,8 +84,8 @@ function _M.cancel(co)
 	if co[2] then 
 		_M.cancel_handler(co[2], co)
 		map[co[1]] = nil
-	else
-		logger.warn('no canceler', co[1], 'maybe this coroutine yields under un-cancelable operation')
+	elseif coroutine.status(co) ~= 'dead' then
+		logger.warn('no canceler', co[1], 'it yields under un-cancelable operation?', coroutine.status(co))
 	end
 end
 
