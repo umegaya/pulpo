@@ -90,8 +90,8 @@ function _M.random_k_from(t, k)
 end
 
 math.randomseed(os.clock())
-function _M.random(start_n, end_n)
-	return math.random(start_n, end_n)
+function _M.random(...)
+	return math.random(...)
 end
 
 --> transfer executable information through string

@@ -113,7 +113,7 @@ end
 local function unregister_thread(ev, co)
 	for i=1,#ev.waitq do
 		if ev.waitq[i] == co then
-			logger.report('remove coro from event', i, co)
+			-- logger.report('remove coro from event', i, co)
 			table.remove(ev.waitq, i)
 			break
 		end

@@ -53,11 +53,17 @@ local metatable = {}
 local tentacle_mt = {}
 function metatable.__call(t, body, ...)
 	local c = new()
+	if _M.DEBUG2 then
+		c.bt = debug.traceback()
+	end
 	_M.resume(c, body, err_handler, ...)
 	return c
 end
 function tentacle_mt.__call(t, ...)
 	local c = new()
+	if _M.DEBUG2 then
+		c.bt = debug.traceback()
+	end
 	_M.resume(c, t[1], err_handler, ...)
 	return c
 end

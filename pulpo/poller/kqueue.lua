@@ -145,7 +145,7 @@ end
 function io_index.add_to(t, poller)
 	pulpo_assert(bit.band(t.ev.flags, EV_ADD) ~= 0, "invalid event flag")
 	local n = C.kevent(poller.kqfd, t.ev, 1, nil, 0, poller.timeout)
-	-- print(poller.kqfd, n, t.ev.ident, t.ev.filter)
+	-- logger.info('io_index.add_to', poller.kqfd, n, t.ev.ident, t.ev.filter)
 	if n ~= 0 then
 		logger.error('kqueue event add error:'..ffi.errno())
 		return false
