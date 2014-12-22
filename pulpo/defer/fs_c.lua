@@ -33,14 +33,12 @@ local macros = {
 local cdecls = { 
 	"opendir", "readdir", "closedir", "DIR", "pulpo_dir_t", "open", "fsync", 
 	"stat", "mkdir", "rmdir", "struct stat", "fileno", "unlink", "syscall", 
-	"lseek", "rename", 
+	"lseek", "rename", "getdirentries",
 }
 if ffi.os == "OSX" then
 	table.insert(macros, "SYS_stat64")
-	table.insert(cdecls, "getdirentries")
 elseif ffi.os == "Linux" then
 	table.insert(macros, "SYS_stat")
-	table.insert(cdecls, "getdirentries64")
 else
 	assert(false, 'unsupported os:'..ffi.os)
 end
@@ -57,7 +55,10 @@ local ffi_state = loader.load('fs.lua', cdecls, macros, nil, [[
 	} pulpo_dir_t;
 ]])
 
-local syscall_stat, syscall_dents
+local syscall_stat
+local function syscall_dents(fd, buf, n_bytes, basep)
+	return C.getdirentries(fd, buf, n_bytes, basep)
+end
 if ffi.os == "OSX" then
 	ffi.cdef [[
 		/* at luajit's readdir returns this format of dirent. (not 64bit inode version.) */
@@ -72,19 +73,12 @@ if ffi.os == "OSX" then
 	function syscall_stat(path, st)
 		return C.syscall(ffi.defs.SYS_stat64, path, st)
 	end
-	function syscall_dents(fd, buf, n_bytes, basep)
-		-- return C.syscall(ffi.defs.SYS_getdirentries64, fd, buf, n_bytes)
-		return C.getdirentries(fd, buf, n_bytes, basep)
-	end
 elseif ffi.os == "Linux" then
 	ffi.cdef [[
 		typedef struct dirent pulpo_dirent_t;
 	]]
 	function syscall_stat(path, st)
 		return C.syscall(ffi.defs.SYS_stat, path, st)
-	end
-	function syscall_dents(fd, buf, n_bytes, basep)
-		return C.getdirentries64(fd, buf, n_bytes, basep)
 	end
 else
 	assert(false, 'unsupported os:'..ffi.os)
@@ -142,7 +136,6 @@ local function raw_iterate_dir(path)
 		assert(size >= ffi.offsetof('pulpo_dirent_t', 'd_name'))
 		while ofs < size do
 			local ent = ffi.cast('pulpo_dirent_t*', buf + ofs)
-			print(bit.rshift(ent.d_namlen, 8), ent.d_reclen, ffi.string(ent.d_name - 1), ofs)
 			ofs = ofs + ent.d_reclen
 		end
 		if ofs < size then
@@ -236,7 +229,7 @@ function _M.mode(modestr)
 	if modestr:byte() ~= ("0"):byte() then
 		modestr = "0"..modestr
 	end
-	return ffi.new('__uint16_t', tonumber(modestr, "8"))
+	return ffi.new('uint16_t', tonumber(modestr, "8"))
 end
 function _M.open(path, flags, mode)
 	local fd = C.open(path, flags, mode or O_RDWR)

@@ -27,6 +27,9 @@ local default_methods = {
 	like = function (t, pattern)
 		return t.name:match(pattern)
 	end,
+	set_bt = function (t)
+		t.bt = debug.traceback()
+	end,
 	raise = function (t)
 		error(t)
 	end,

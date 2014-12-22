@@ -121,9 +121,11 @@ local function init_shared_memory()
 		return 'pthread_mutex_t', mutex
 	end)
 	-- make default logger thread safe
+	local origin = util.clock()
 	log.redirect("default", function (setting, ...)
 		PT.pthread_mutex_lock(_M.logger_mutex)
 		term[setting.color]()
+		io.write(("%s "):format(util.clock() - origin))
 		io.write(logpfx)
 		print(...)
 		term.resetcolor()

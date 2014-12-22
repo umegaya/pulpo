@@ -77,20 +77,19 @@ function taskgrp_index.close(t)
 end
 local task_element_mt = { __index = {} }
 function task_element_mt.__index:__cancel(co)
-	for i=1,#self[4] do
-		if self[4][i].arg == co then
-			table.remove(self.q, i)
-			break
-		end
-	end
+	logger.info('task cancel', self[4][self[5]][3], co)
+	assert(self[4][self[5]][3] == co)
+	table.remove(self[4], self[5])
 end
 function taskgrp_index.add(t, start, intv, fn, arg)
 	local sidx = t:get_duration_index(start)
 	local iidx = t:get_duration_index(intv)
 	local dest = t:get_dest_index(sidx)
 	local q = t.queue[dest]
-	local r = setmetatable({iidx, fn, arg, q}, task_element_mt)
+	local tuple = {iidx, fn, arg, q}
+	local r = setmetatable(tuple, task_element_mt)
 	table.insert(q, r)
+	tuple[5] = #q
 	return r
 end
 local function sleep_proc(co)
@@ -100,6 +99,9 @@ end
 -- sleep
 function taskgrp_index.sleep(t, sec)
 	local co = tentacle.running()
+	if not co then
+		logger.report('invalid tentacle called sleep', debug.traceback())
+	end
 	tentacle.yield(t:add(sec, sec, sleep_proc, co))
 end
 -- alarm
