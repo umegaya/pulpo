@@ -110,6 +110,9 @@ end
 
 local function init_shared_memory()
 	ffi.cdef[[
+		typedef struct pulpo_clock_origin {
+			double v;
+		} pulpo_clock_origin_t;
 		typedef struct pulpo_thread_idseed {
 			int cnt;
 		} pulpo_thread_idseed_t;
@@ -121,7 +124,13 @@ local function init_shared_memory()
 		return 'pthread_mutex_t', mutex
 	end)
 	-- make default logger thread safe
-	local origin = util.clock()
+	local ret = _M.shared_memory("__clock_origin__", function ()
+		local o = memory.alloc_typed('pulpo_clock_origin_t')
+		o.v = util.clock()
+		return 'pulpo_clock_origin_t', o
+	end)
+	_M.clock_origin = ret.v
+	local origin = ret.v
 	log.redirect("default", function (setting, ...)
 		PT.pthread_mutex_lock(_M.logger_mutex)
 		term[setting.color]()
