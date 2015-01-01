@@ -147,9 +147,10 @@ function _M.new(p, start, intv, ctx)
 	_M.start[0].tv_sec = (_M.start[0].tv_sec + _M.current[0].tv_sec)
 	local ns = (_M.start[0].tv_nsec + _M.current[0].tv_nsec)
 	if ns >= (1000 * 1000 * 1000) then
-		_M.start[0].tv_nsec = (ns - (1000 * 1000 * 1000))
-		_M.start[0].tv_sec = _M.start[0].tvsec + 1
+		ns = ns - (1000 * 1000 * 1000)
+		_M.start[0].tv_sec = _M.start[0].tv_sec + 1
 	end
+	_M.start[0].tv_nsec = ns
 	_M.itimerspec[0].it_interval = _M.intv[0]
 	_M.itimerspec[0].it_value = _M.start[0]
 	if C.timerfd_settime(fd, TFD_TIMER_ABSTIME, _M.itimerspec, nil) < 0 then

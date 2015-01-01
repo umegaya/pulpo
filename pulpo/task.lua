@@ -1,5 +1,6 @@
 local timer = require 'pulpo.io.timer'
 local tentacle = require 'pulpo.tentacle'
+local util = require 'pulpo.util'
 local event = require 'pulpo.event'
 local _M = {}
 ------------------------------------------------------------
@@ -48,13 +49,15 @@ local function taskgrp_new(intv, max_duration)
 		size = size,
 		queue = queue,
 		intv = intv,
+		epoc = util.clock(),
 	}, taskgrp_mt)
 end
 function taskgrp_index.get_duration_index(t, sec)
 	return math.floor(sec / t.intv)
 end
 function taskgrp_index.get_dest_index(t, span)
-	return 1 + ((t.index + span)%t.size)
+	local ofs = t:get_duration_index(util.clock() - t.epoc)
+	return 1 + ((ofs + span)%t.size) -- +1 for converting to lua index
 end
 function taskgrp_index.loop(t)
 	if t.stop then return false end
@@ -64,7 +67,8 @@ function taskgrp_index.loop(t)
 	local q = t.queue[t.index]
 	for idx,fn in ipairs(q) do
 		q[idx] = nil
-		if fn[2](fn[3]) ~= false then
+		local ok, r = pcall(fn[2], fn[3])
+		if ok and (r ~= false) then
 			local nxt = t:get_dest_index(fn[1])
 			table.insert(t.queue[nxt], fn)
 		end
@@ -117,9 +121,7 @@ function taskgrp_index.alarm(t, sec)
 end
 -- tick
 local function ticker_proc(em)
-	if em.arg.stop then
-		return false
-	end
+	if em.arg.stop then return false end
 	em:emit('read')
 end
 local function ticker_preyield(ev, arg)
