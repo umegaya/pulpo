@@ -60,10 +60,13 @@ local function create_opaque(fn, group, opts)
 		r.proc = memory.strdup(proc)
 		r.plen = #proc
 	end
-	if opts.init_fn then
-		local init_proc = util.encode_proc(opts.init_fn)
+	if opts.init_proc then
+		local init_proc = util.encode_proc(opts.init_proc)
 		r.init_proc = memory.strdup(init_proc)
 		r.init_plen = #init_proc
+	end
+	if opts.init_params then
+		r.init_params = memory.strdup(opts.init_params)
 	end
 	return r
 end
@@ -96,6 +99,7 @@ local function init_cdef()
 			unsigned char noloop, debug;
 			char *group;
 			char *proc, *init_proc;
+			char *init_params;
 			size_t plen, init_plen;
 			pulpo_poller_t *poller;
 		} pulpo_opaque_t;
@@ -106,11 +110,37 @@ end
 
 local function init_shared_memory()
 	ffi.cdef[[
+		typedef struct pulpo_clock_origin {
+			double v;
+		} pulpo_clock_origin_t;
 		typedef struct pulpo_thread_idseed {
 			int cnt;
 		} pulpo_thread_idseed_t;
 	]]
 	_M.id_seed = _M.shared_memory("__thread_id_seed__", gen.rwlock_ptr("pulpo_thread_idseed_t"))
+	_M.logger_mutex = _M.shared_memory("__logger_mutex__", function ()
+		local mutex = memory.alloc_typed('pthread_mutex_t')
+		PT.pthread_mutex_init(mutex, nil)
+		return 'pthread_mutex_t', mutex
+	end)
+	-- make default logger thread safe
+	local ret = _M.shared_memory("__clock_origin__", function ()
+		local o = memory.alloc_typed('pulpo_clock_origin_t')
+		o.v = util.clock()
+		return 'pulpo_clock_origin_t', o
+	end)
+	_M.clock_origin = ret.v
+	local origin = ret.v
+	log.redirect("default", function (setting, ...)
+		PT.pthread_mutex_lock(_M.logger_mutex)
+		term[setting.color]()
+		io.write(("%s "):format(util.clock() - origin))
+		io.write(logpfx)
+		print(...)
+		term.resetcolor()
+		io.stdout:flush()
+		PT.pthread_mutex_unlock(_M.logger_mutex)
+	end)
 end
 
 local function create_thread(exec, group, arg, opts)
@@ -123,8 +153,11 @@ local function create_thread(exec, group, arg, opts)
 		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 		if opaque.init_proc ~= ffi.NULL then
 			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
-			init_proc()
+			init_proc(opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
 			memory.free(opaque.init_proc)
+			if opaque.init_params ~= ffi.NULL then
+				memory.free(opaque.init_params)
+			end
 		end
 		memory.free(opaque.proc)
 		if opaque.noloop == 0 then

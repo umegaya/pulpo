@@ -57,7 +57,7 @@ local function faultaddr(si)
 	end
 end
 
---> setup signal handler exactly called from the thread which fault occurs
+--> setup signal handler exactly called from the thread which signal occurs
 _M.signal_handlers = {}
 thread.tls.common_signal_handler = ffi.cast(sighandler_t, function (sno, info, p)
 	-- print('sig handler(called):', _M.signal_handlers)
@@ -158,9 +158,10 @@ setmetatable(_M, {
 	end
 })
 
--- show segv stacktrace. I understand that is unsafe. but if app is crushed by this, so what?
+-- show segv stacktrace. I understand that is unsafe. 
+-- but even if app is crushed by such an unsafe operation, so what?
 -- sooner or later it is crushed by illegal memory access. 
--- I want to bet small chance to get useful information about cause.
+-- I want to bet small chance to get useful information about reason.
 _M.signal("SIGSEGV", function (sno, info, p)
 	logger.fatal("SIGSEGV", faultaddr(info))
 	os.exit(-2)

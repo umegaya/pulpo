@@ -100,7 +100,14 @@ function _M.managed_realloc_typed(ct, p, sz)
 	return ffi.cast(malloc_info.t, p)
 end
 
+function _M.move(dst, src, sz)
+	return C.memmove(dst, src, sz)
+end
+
 function _M.free(p)
+	if _M.DEBUG then
+		print('free:', p, debug.traceback())
+	end
 	C.free(p)
 end
 

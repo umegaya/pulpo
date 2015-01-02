@@ -190,7 +190,7 @@ local function ssl_connect(io)
 	local sslp = ctx.ssl
 ::retry::
 	if ctx.state == STATE.CONNECTING then
-		event.wait(io:event('open'))
+		event.join(io:event('open'))
 		return true
 	elseif ctx.state == STATE.CONNECTED then
 		return true
@@ -330,8 +330,11 @@ end
 local function ssl_server_gc(io)
 	C.close(io:fd())
 end
+local function ssl_addrinfo(io)
+	return io:ctx('pulpo_ssl_context_t*').addrinfo
+end
 
-HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addrinfo)
 HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
@@ -397,15 +400,15 @@ function _M.listen(p, addr, opts)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
-		raise('syscall', 'setsockopt', errno.errno(), fd)
+		raise('syscall', 'setsockopt', fd)
 	end
 	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
 		C.close(fd)
-		raise('syscall', 'bind', errno.errno(), fd)
+		raise('syscall', 'bind', fd)
 	end
 	if C.listen(fd, poller.config.maxconn) < 0 then
 		C.close(fd)
-		raise('syscall', 'listen', errno.errno(), fd)
+		raise('syscall', 'listen', fd)
 	end
 	logger.info('ssl listen:', fd, addr)
 	popts = memory.alloc_fill_typed('pulpo_ssl_option_t')

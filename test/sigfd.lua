@@ -20,10 +20,10 @@ pulpo.tentacle(function ()
 		print('kill tentacle end')
 	end)
 
-	local ok, r = pulpo.event.select(false, pulpo.tentacle(function ()
+	local ok, r = pulpo.event.wait(false, pulpo.tentacle(function ()
 		local sigg = sigfd.newgroup()
 		while true do
-			local event, object = pulpo.event.select(false, sigg.SIGUSR1:event('read'), sigg.SIGUSR2:event('read'))
+			local event, object = pulpo.event.wait(false, sigg.SIGUSR1:event('read'), sigg.SIGUSR2:event('read'))
 			if event == 'read' then
 				local v = object:read()
 				if object == sigg.SIGUSR1 then

@@ -8,13 +8,27 @@ local default_methods = {
 		return setmetatable({args={...}, bt = bt}, decl)
 	end,
 	message = function (t)
-		return table.concat(t.args, ",")
+		if #t.args <= 0 then
+			return ""
+		else
+			local ret = tostring(t.args[1])
+			for i=2,#t.args,1 do
+				ret = (ret .. "," .. tostring(t.args[i]))
+			end
+			return ret
+		end
+	end,
+	get_arg = function (t, idx)
+		return t.args[idx]
 	end,
 	is = function (t, name)
 		return t.name == name
 	end,
 	like = function (t, pattern)
 		return t.name:match(pattern)
+	end,
+	set_bt = function (t)
+		t.bt = "\n"..debug.traceback()
 	end,
 	raise = function (t)
 		error(t)
@@ -25,8 +39,7 @@ local default_metamethods = {
 		return 'error:'..t.name..":"..t:message()..t.bt
 	end,
 	__serialize = function (t)
-		return ("(require 'pulpo.exception').unserialize([[%s]],[[\n%s]],[=[%s]=])"):format(
-			t.name, t.bt, _M.args_serializer and _M.args_serializer(t.args) or "{}"), true
+		return _M.serializer and _M.serializer(t) or tostring(t), true
 	end,
 }
 
@@ -48,16 +61,19 @@ local function def_exception(name, decl)
 	return tmp2
 end
 
-local function new_exception(name, level, ...)
+local function new_exception(name, bt, ...)
 	local decl = exceptions[name]
 	if not decl then
 		_M.raise("not_found", "exception", name)
 	end
-	return decl.__index.new(decl, debug.traceback("", level), ...)
+	return decl.__index.new(decl, 
+		type(bt) == 'number' and debug.traceback("", bt) or ("\n"..bt), ...)
 end
-
 function _M.new(name, ...)
 	return new_exception(name, 2, ...)
+end
+function _M.new_with_bt(name, bt, ...)
+	return new_exception(name, bt, ...)
 end
 function _M.unserialize(name, bt, args)
 	local decl = exceptions[name]
@@ -97,6 +113,12 @@ _M.define('malloc', {
 		else
 			return "fail to allocate:"..t.args[1].."("..ffi.sizeof(t.args[1]).." bytes)"
 		end
+	end,
+})
+_M.define('fatal', {
+	raise = function (t)
+		logger.fatal(t)
+		os.exit(-1)
 	end,
 })
 _M.define('report', {

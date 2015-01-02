@@ -68,7 +68,7 @@ _M.original_socket = socket.unix_domain()
 function _M.new(p, sig)
 	local fd = socket.dup(_M.original_socket)
 	if not fd then 
-		raise('syscall', 'dup', errno.errno()) 
+		raise('syscall', 'dup', _M.original_socket) 
 	end
 	local signo = type(sig) == 'number' and sig or signal[sig]
 	if not p:add_signal(fd, signo) then 
@@ -106,10 +106,10 @@ function _M.new(p, sig)
 	local sigset = signal.makesigset(nil, sig)
 	local fd = C.signalfd(-1, sigset, 0)
 	if fd < 0 then
-		raise('syscall', 'signalfd', errno.errno())
+		raise('syscall', 'signalfd', fd)
 	end
 	if socket.setsockopt(fd) < 0 then
-		raise('syscall', 'setsockopt', errno.errno())
+		raise('syscall', 'setsockopt', fd)
 	end
 	logger.info('signal:', fd, sig)
 	-- blocking default behavior of sigfd'ed signals

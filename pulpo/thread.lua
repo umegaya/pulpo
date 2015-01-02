@@ -30,7 +30,7 @@ local ffi_state
 exception.define('pthread')
 exception.define('lua', {
 	message = function (t)
-		return ("%s:%d:%s"):format(t.args[1], t.args[2], C.lua_tolstring(t.args[3], -1, nil))
+		return ("%s,%d,%s"):format(t.args[1], t.args[2], ffi.string(C.lua_tolstring(t.args[3], -1, nil)))
 	end,
 })
 
@@ -168,12 +168,10 @@ function _M.init_cdef(cache)
 				PT.pthread_mutex_lock(t.mtx)
 				local found = false
 				for i=0,t.used-1,1 do
-					if not found then 
-						if PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
-							found = true
-						end
-					else
+					if found then 
 						t.list[i - 1] = t.list[i]
+					elseif PT.pthread_equal(t.list[i].pt, thread.pt) ~= 0 then
+						found = true
 					end
 				end
 				if found then
@@ -378,6 +376,7 @@ function _M.create(proc, args, opaque, debug)
 	C.luaL_openlibs(L)
 	local r = C.luaL_loadstring(L, ([[
 	_G.DEBUG = %s
+	package.path = "%s"
 	local ffi = require 'ffiex.init'
 	local thread = require 'pulpo.thread'
 	local memory = require 'pulpo.memory'
@@ -396,6 +395,7 @@ function _M.create(proc, args, opaque, debug)
 	_G.arg = %s
 	]]):format(
 		debug and "true" or "false", 
+		package.path, 
 		string.dump(proc), 
 		util.sprintf("%08x", 16, th),
 		export_cmdl_args()
@@ -466,6 +466,14 @@ end
 -- global share memory
 function _M.shared_memory(k, v)
 	return _shared_memory:find_or_init(k, v)
+end
+function _M.unmap_shared_memory(k)
+	return _shared_memory:delete(k)
+end
+function _M.lock_shared_memory(k, proc, ...)
+	return _shared_memory:touch(k, function (data, fn, ...)
+		return fn(data.ptr, ...)
+	end, proc, ...)
 end
 
 -- iterate all thread in this process

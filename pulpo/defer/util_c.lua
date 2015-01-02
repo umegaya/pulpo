@@ -8,8 +8,7 @@ local _M = (require 'pulpo.package').module('pulpo.defer.util_c')
 local C = ffi.C
 local ffi_state = loader.load('util.lua', {
 	"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
-	"gettimeofday", "snprintf", 
-	"getpid", 
+	"gettimeofday", "snprintf", "strnlen", "strncmp", "getpid", 
 }, {
 	"RLIMIT_NOFILE",
 	"RLIMIT_CORE",
@@ -19,6 +18,7 @@ local ffi_state = loader.load('util.lua', {
 	#include <sys/resource.h>
 	#include <stdio.h>
 	#include <unistd.h>
+	#include <string.h>
 ]] or (ffi.os == "Linux" and [[
 	#include <time.h>
 	#include <sys/time.h> 
@@ -27,6 +27,7 @@ local ffi_state = loader.load('util.lua', {
 	#undef __USE_GNU
 	#include <stdio.h>
 	#include <unistd.h>
+	#include <string.h>
 ]] or assert(false, "unsupported OS:"..ffi.os)))
 
 local RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
@@ -129,49 +130,30 @@ function _M.clock_pair()
 	C.gettimeofday(_M.tval, nil)
 	return _M.tval[0].tv_sec, _M.tval[0].tv_usec
 end
---> transfer executable information through string
-function _M.decode_proc(code)
-	local executable
-	local f, err = loadstring(code)
-	if f then
-		executable = f
-	else
-		f, err = loadfile(code)
-		if f then
-			executable = f
-		else
-			executable = function ()
-				local ok, r = pcall(require, code)
-				--if not ok then error(r) end
-			end
-		end
+
+local fmt_buf = {}
+local fmt_buf_index = 0
+local fmt_buf_num = 16
+local fmt_buf_size = {}
+function _M.rawsprintf(fmt, size, ...)
+	if not fmt_buf[fmt_buf_index] or (fmt_buf_size[fmt_buf_index] < (size + 1)) then
+		fmt_buf[fmt_buf_index] = memory.realloc_typed('char', fmt_buf[fmt_buf_index] or ffi.NULL, size + 1)
+		fmt_buf_size[fmt_buf_index] = size + 1
 	end
-	return executable
+	local p = fmt_buf[fmt_buf_index]
+	local n = C.snprintf(p, size + 1, fmt, ...)
+	fmt_buf_index = ((fmt_buf_index + 1) % fmt_buf_num)
+	return p, n
 end
-function _M.encode_proc(proc)
-	if type(proc) == "string" then
-		return proc
-	elseif type(proc) ~= "function" then
-		error('invalid executable:'..type(proc))
-	end
-	return string.dump(proc)
-end
-function _M.create_proc(executable)
-	return _M.decode_proc(_M.encode_proc(executable))
+function _M.sprintf(fmt, size, ...)
+	return ffi.string(_M.rawsprintf(fmt, size, ...))
 end
 
-local sprintf_workmem
-local sprintf_workmem_size = 0
-function _M.sprintf(fmt, size, ...)
-	if sprintf_workmem_size < (size + 1) then
-		if sprintf_workmem then
-			memory.free(sprintf_workmem)
-		end
-		sprintf_workmem = memory.alloc_typed('char', size + 1)
-		sprintf_workmem_size = size + 1
-	end
-	local n = C.snprintf(sprintf_workmem, size + 1, fmt, ...)
-	return ffi.string(sprintf_workmem, n)
+function _M.strlen(p, estsize)
+	return C.strnlen(p, estsize)
+end
+function _M.strcmp(a, b, len)
+	return C.strncmp(a, b, len) == 0
 end
 
 function _M.getarg(ct, ...)
