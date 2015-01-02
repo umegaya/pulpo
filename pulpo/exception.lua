@@ -28,7 +28,7 @@ local default_methods = {
 		return t.name:match(pattern)
 	end,
 	set_bt = function (t)
-		t.bt = debug.traceback()
+		t.bt = "\n"..debug.traceback()
 	end,
 	raise = function (t)
 		error(t)
