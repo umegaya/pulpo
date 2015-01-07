@@ -466,7 +466,7 @@ function _M.setsockopt(fd, opts)
 		end
 		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')')
 	end
-	if opts.timeout and (opts.timeout > 0) then
+	if opts.timeout > 0 then
 		local timeout = util.sec2timeval(tonumber(opts.timeout))
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, timeout, ffi.sizeof('struct timeval')) < 0 then
 			logger.error("setsockopt (sndtimeo) errno=", ffi.errno());
@@ -477,16 +477,16 @@ function _M.setsockopt(fd, opts)
 			return -3
 		end
 	end
-	if opts.wblen and (opts.wblen.data > 0) then
-		logger.info(fd, "set wblen to", tonumber(opts.wblen));
-		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof(opts.wblen.p)) < 0 then
+	if opts.wblen.data > 0 then
+		logger.info(fd, "set wblen to", opts.wblen.data);
+		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (sndbuf) errno=", errno);
 			return -4
 		end
 	end
-	if opts.rblen and (opts.rblen.data > 0) then
-		logger.info(fd, "set rblen to", tonumber(opts.wblen));
-		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof(opts.rblen.p)) < 0 then
+	if opts.rblen.data > 0 then
+		logger.info(fd, "set rblen to", opts.rblen.data);
+		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (rcvbuf) errno=", errno);
 			return -5
 		end

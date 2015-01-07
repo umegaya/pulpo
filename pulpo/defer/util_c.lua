@@ -81,7 +81,26 @@ function _M.maxconn(set_to)
 	return set_to
 end
 
+function _M.getsockbuf()
+	local rv, wv
+	if ffi.os == "Linux" then
+		rv = io.popen('sudo sysctl net.core.rmem_max 2>/dev/null')
+		wv = io.popen('sudo sysctl net.core.wmem_max 2>/dev/null')
+	elseif ffi.os == "OSX" then
+		rv = io.popen('sudo sysctl net.inet.tcp.recvspace 2>/dev/null')
+		wv = io.popen('sudo sysctl net.inet.tcp.sendspace 2>/dev/null')
+	end
+	local r = rv:read('*a')
+	local w = wv:read('*a')
+	-- print('getsockbuf:', r, r:match('([0-9]+)%c*$'), w, w:match('([0-9]+)%c*$'))
+	return tonumber(r:match('[0-9]+%c*$')), tonumber(w:match('[0-9]+%c*$'))
+end
 function _M.setsockbuf(rb, wb)
+	local crb, cwb = _M.getsockbuf()
+	logger.notice('system rwbuf size:', crb, cwb)
+	if not (crb and cwb) then
+		return 
+	end
 	--[[ TODO: change rbuf/wbuf max /*
 	* 	you may change your system setting for large wb, rb. 
 	*	eg)
@@ -92,6 +111,34 @@ function _M.setsockbuf(rb, wb)
     *			(but for linux, below page does not recommend manual tuning because default it set to 4MB)
 	*	see http://www.psc.edu/index.php/networking/641-tcp-tune for detail
 	*/]]
+	rb = rb or crb
+	wb = wb or cwb
+	if ffi.os == "Linux" then
+		if crb < rb then
+			logger.notice('set system rb to', rb)
+			os.execute(('sudo sysctl -w net.core.rmem_max=%d'):format(rb))
+		end
+		if cwb < wb then
+			logger.notice('set system wb to', wb)
+			os.execute(('sudo sysctl -w net.core.wmem_max=%d'):format(wb))
+		end
+	elseif ffi.os == "OSX" then
+		if (rb + wb) > (crb + cwb) then
+			local sb = tonumber(io.popen('sudo sysctl kern.ipc.maxsockbuf'):read('*a'):match('[0-9]+%c*$'))
+			if sb < (rb + wb) then
+				logger.notice('set system sockbuf to', rb + wb)
+				os.execute(('sudo sysctl -w kern.ipc.maxsockbuf=%d'):format(rb + wb))
+			end
+		end
+		if crb < rb then
+			logger.notice('set system rb to', rb)
+			os.execute(('sudo sysctl -w net.inet.tcp.recvspace=%d'):format(rb))
+		end
+		if cwb < wb then
+			logger.notice('set system wb to', wb)
+			os.execute(('sudo sysctl -w net.inet.tcp.sendspace=%d'):format(wb))
+		end
+	end
 	return rb, wb
 end
 

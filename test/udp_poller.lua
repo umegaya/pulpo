@@ -8,7 +8,8 @@ local NITER = 100
 local opts = {
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
 	maxconn = NCLIENTS, 
-	cache_dir = '/tmp/pulpo'
+	cache_dir = '/tmp/pulpo',
+	rmax = 1024 * 1024,
 }
 thread.initialize(opts)
 poller.initialize(opts)
@@ -23,7 +24,7 @@ tentacle(function ()
 	-- so increase rbuf size is necessary.
 	-- considering actual payload size, 256 * NCLIENTS seems to be enough, but maybe udp header size 
 	-- requires more memory.
-	local s = udp.listen(p, '0.0.0.0:8008', { rblen = 512 * NCLIENTS })
+	local s = udp.listen(p, '0.0.0.0:8008', { rblen = 1024 * NCLIENTS })
 	local a = memory.managed_alloc_typed('pulpo_addr_t')
 	a:init()
 	local received = {}
