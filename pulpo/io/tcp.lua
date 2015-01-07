@@ -30,7 +30,7 @@ local STATE = {
 
 ffi.cdef [[
 typedef struct pulpo_tcp_context {
-	pulpo_addrinfo_t addrinfo;
+	pulpo_addr_t addr;
 	unsigned int state:8, padd:24;
 } pulpo_tcp_context_t;
 ]]
@@ -45,12 +45,11 @@ local function tcp_connect(io)
 	elseif ctx.state == STATE.CONNECTED then
 		return
 	end
-	local n = C.connect(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen[0])
+	local n = C.connect(io:fd(), ctx.addr.p, ctx.addr.len[0])
 	if n < 0 then
 		local eno = errno.errno()
 		-- print('tcp_connect:', io:fd(), n, eno)
 		if eno == EINPROGRESS then
-			-- print('EINPROGRESS:to:', socket.inet_namebyhost(ctx.addrinfo.addrp))
 			ctx.state = STATE.CONNECTING
 			if not io:wait_write() then
 				raise('invalid', 'socket', 'already closed')
@@ -174,7 +173,7 @@ local function tcp_accept(io)
 		ctx = memory.alloc_typed('pulpo_tcp_context_t')
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
-	local n = C.accept(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen)
+	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)
 	if n < 0 then
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
@@ -203,17 +202,17 @@ local function tcp_gc(io)
 	C.close(io:fd())
 end
 
-local function tcp_addrinfo(io)
-	return io:ctx('pulpo_tcp_context_t*').addrinfo
+local function tcp_addr(io)
+	return io:ctx('pulpo_tcp_context_t*').addr
 end
 
-HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_addrinfo, tcp_writev, tcp_writef)
+HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_addr, tcp_writev, tcp_writef)
 HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tcp_gc)
 
 function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_tcp_context_t')
 	ctx.state = STATE.INIT
-	local fd = socket.stream(addr, opts, ctx.addrinfo)
+	local fd = socket.stream(addr, opts, ctx.addr)
 	if not fd then 
 		raise('syscall', 'socket', 'create stream') 
 	end
@@ -224,14 +223,14 @@ function _M.connect(p, addr, opts)
 end
 
 function _M.listen(p, addr, opts)
-	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
-	local fd = socket.stream(addr, opts, ai)
+	local a = memory.managed_alloc_typed('pulpo_addr_t')
+	local fd = socket.stream(addr, opts, a)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
 		raise('syscall', 'setsockopt', fd)
 	end
-	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
+	if C.bind(fd, a.p, a.len[0]) < 0 then
 		C.close(fd)
 		raise('syscall', 'bind', fd)
 	end
@@ -240,7 +239,7 @@ function _M.listen(p, addr, opts)
 		raise('syscall', 'listen', fd)
 	end
 	logger.info('listen:', fd, addr, p)
-	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts) or nil)
+	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts, true) or nil)
 end
 
 return _M

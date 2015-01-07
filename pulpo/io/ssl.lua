@@ -28,7 +28,7 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 	#include <openssl/err.h>
 	typedef struct pulpo_ssl_context {
 		SSL *ssl;
-		pulpo_addrinfo_t addrinfo;
+		pulpo_addr_t addr;
 		unsigned int state:8, padd:24;
 	} pulpo_ssl_context_t;
 	typedef struct pulpo_ssl_manager {
@@ -195,12 +195,10 @@ local function ssl_connect(io)
 	elseif ctx.state == STATE.CONNECTED then
 		return true
 	end
-	local n = C.connect(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen[0])
+	local n = C.connect(io:fd(), ctx.addr.p, ctx.addr.len[0])
 	if n < 0 then
 		local eno = errno.errno()
-		-- print('tcp_connect:', io:fd(), n, eno)
 		if eno == EINPROGRESS then
-			-- print('EINPROGRESS:to:', socket.inet_namebyhost(ctx.addrinfo.addrp))
 			-- tcp layer also established below SSL_connect.
 		elseif eno == ECONNREFUSED then
 			goto retry -- maybe server listen backlog exceed
@@ -280,7 +278,7 @@ local function ssl_accept(io)
 	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
 ::retry::
-	local n = C.accept(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen)
+	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)
 	if n < 0 then
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
@@ -330,11 +328,11 @@ end
 local function ssl_server_gc(io)
 	C.close(io:fd())
 end
-local function ssl_addrinfo(io)
-	return io:ctx('pulpo_ssl_context_t*').addrinfo
+local function ssl_addr(io)
+	return io:ctx('pulpo_ssl_context_t*').addr
 end
 
-HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addrinfo)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addr)
 HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
@@ -369,7 +367,7 @@ function _M.connect(p, addr, opts)
 	if ctx == ffi.NULL then 
 		raise("malloc", "pulpo_ssl_context_t") 
 	end
-	local fd = socket.stream(addr, opts.sockopts, ctx.addrinfo)
+	local fd = socket.stream(addr, opts.sockopts, ctx.addr)
 	if not fd then 
 		raise("syscall", "socket", errno.errno()) 
 	end
@@ -395,14 +393,14 @@ end
 
 function _M.listen(p, addr, opts)
 	opts = opts or default_opt
-	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
-	local fd = socket.stream(addr, opts.sockopts, ai)
+	local a = memory.managed_alloc_typed('pulpo_addr_t')
+	local fd = socket.stream(addr, opts.sockopts, a)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
 		raise('syscall', 'setsockopt', fd)
 	end
-	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
+	if C.bind(fd, a.p, a.len[0]) < 0 then
 		C.close(fd)
 		raise('syscall', 'bind', fd)
 	end

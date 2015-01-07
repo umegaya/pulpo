@@ -22,6 +22,7 @@ ffi.cdef [[
 	void *realloc(void *, size_t);
 	char *strdup(const char *);
 	void *memmove(void *, const void *, size_t);
+	int memcmp(const void *s1, const void *s2, size_t n);
 ]]
 
 function _M.alloc_fill(sz, fill)
@@ -71,7 +72,7 @@ end
 
 function _M.realloc_typed(ct, p, sz)
 	local malloc_info = malloc_info_list[ct]
-	local p = _M.realloc(p, malloc_info.sz * (sz or 1))
+	p = _M.realloc(p, malloc_info.sz * (sz or 1))
 	if not p then return p end	
 	return ffi.cast(malloc_info.t, p)
 end
@@ -83,9 +84,9 @@ end
 
 function _M.managed_alloc_typed(ct, sz)
 	local malloc_info = malloc_info_list[ct]
-	local p = _M.managed_alloc((sz or 1) * malloc_info.sz)
-	if not p then return p end	
-	return ffi.cast(malloc_info.t, p)
+	local p = C.malloc((sz or 1) * malloc_info.sz)
+	if p == ffi.NULL then return nil end
+	return ffi.gc(ffi.cast(malloc_info.t, p), C.free)
 end
 
 function _M.managed_realloc(p, sz)
@@ -95,13 +96,17 @@ end
 
 function _M.managed_realloc_typed(ct, p, sz)
 	local malloc_info = malloc_info_list[ct]
-	local p = _M.realloc(p, malloc_info.sz * (sz or 1))
-	if not p then return p end
-	return ffi.cast(malloc_info.t, p)
+	p = C.realloc(p, malloc_info.sz * (sz or 1))
+	if p == ffi.NULL then return nil end
+	return ffi.gc(ffi.cast(malloc_info.t, p), C.free)
 end
 
 function _M.move(dst, src, sz)
 	return C.memmove(dst, src, sz)
+end
+
+function _M.cmp(dst, src, sz)
+	return C.memcmp(dst, src, sz) == 0
 end
 
 function _M.free(p)
