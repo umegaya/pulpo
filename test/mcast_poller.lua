@@ -20,9 +20,10 @@ local g = task.newgroup(p, 0.01, 10)
 
 local client_msg = ("hello,luact poll"):rep(16)
 local finished = 0
+local MCAST_GROUP = '224.1.1.1:10000'
 for i =1,NLISTNER do
 	tentacle(function (id)
-		local s = udp.mcast_listen(p, '239.192.1.2:10000')
+		local s = udp.mcast_listen(p, MCAST_GROUP)
 		local a = memory.managed_alloc_typed('pulpo_addr_t')
 		a:init()
 		local received = {}
@@ -31,10 +32,12 @@ for i =1,NLISTNER do
 		while cnt < NITER do
 			-- print('accept start:')
 			len = s:read(ptr, 256, a)
-			assert(client_msg == ffi.string(ptr, len))
-			cnt = cnt + 1
-			io.stdout:write(id)
-			io.stdout:flush()
+			if len then
+				assert(client_msg == ffi.string(ptr, len))
+				cnt = cnt + 1
+				io.stdout:write(id)
+				io.stdout:flush()
+			end
 		end
 		finished = finished + 1
 	end, i)
@@ -43,7 +46,8 @@ end
 tentacle(function ()
 	local s = udp.create(p)
 	local a = memory.managed_alloc_typed('pulpo_addr_t')
-	a:set('239.192.1.2:10000')
+	a:set(MCAST_GROUP)
+	local cnt = 0
 	while true do
 		-- print('write start:')
 		s:write(client_msg, #client_msg, a)
@@ -53,6 +57,12 @@ tentacle(function ()
 		end
 		io.stdout:write('*')
 		io.stdout:flush()
+		cnt = cnt + 1
+		if cnt > (NITER * NLISTNER) * 2 then
+			p:stop()
+			logger.error('takes too long time to finish')
+			os.exit(-2)
+		end
 	end
 	io.stdout:write('\n')
 	p:stop()
