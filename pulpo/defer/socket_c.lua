@@ -67,6 +67,7 @@ elseif ffi.os == "OSX" then
 end
 local ffi_state = loader.load("socket.lua", CDECLS, {
 	"AF_INET", "AF_INET6", "AF_UNIX", 
+	"INADDR_ANY",
 	"SOCK_STREAM", 
 	"SOCK_DGRAM", 
 	"SOL_SOCKET", 
@@ -75,6 +76,7 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 		"SO_RCVTIMEO",
 		"SO_SNDBUF",
 		"SO_RCVBUF",
+		"SO_BROADCAST",
 	"F_GETFL",
 	"F_SETFL", 
 		"O_NONBLOCK",
@@ -104,6 +106,7 @@ SOCK_STREAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_STREAM)
 SOCK_DGRAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_DGRAM)
 IPPROTO_IP = 0 -- because on linux, IPPROTO_IP is declared by anonymous enum, which cannot be processed by luajit 
 end
+local INADDR_ANY = tonumber(ffi_state.defs.INADDR_ANY) -- may cdata
 local SOL_SOCKET = ffi_state.defs.SOL_SOCKET
 local SO_REUSEADDR = ffi_state.defs.SO_REUSEADDR
 local SO_REUSEPORT = ffi_state.defs.SO_REUSEPORT
@@ -111,6 +114,7 @@ local SO_SNDTIMEO = ffi_state.defs.SO_SNDTIMEO
 local SO_RCVTIMEO = ffi_state.defs.SO_RCVTIMEO
 local SO_SNDBUF = ffi_state.defs.SO_SNDBUF
 local SO_RCVBUF = ffi_state.defs.SO_RCVBUF
+local SO_BROADCAST = ffi_state.defs.SO_BROADCAST
 local AF_INET = ffi_state.defs.AF_INET
 local AF_UNIX = ffi_state.defs.AF_UNIX
 
@@ -550,14 +554,20 @@ end
 local intval_worker = memory.alloc_typed('pulpo_bytes_op_t')
 function _M.setup_multicast(fd, mcast_addrstr, opts)
 	local mreq = memory.managed_alloc_typed('struct ip_mreq')
+	local ma = ffi.new('struct in_addr[1]')
 	ffi.fill(mreq, ffi.sizeof('struct ip_mreq'))
 	-- get information about specified interface 
-	local ret = _M.getifaddr(opts.ifname, AF_INET)
-	local sa = ffi.cast('struct sockaddr_in*', ret:address())
-	-- logger.info('ifaddr', tostring(opts.ifname), _M.inet_namebyhost(sa))
-	-- set multicast interface data to descriptor
-	local ma = ffi.new('struct in_addr[1]')
-	ma[0] = sa.sin_addr
+	if opts.ifname then
+		local ret = _M.getifaddr(opts.ifname, AF_INET)
+		local sa = ffi.cast('struct sockaddr_in*', ret:address())
+		-- logger.info('ifaddr', tostring(opts.ifname), _M.inet_namebyhost(sa))
+		-- set multicast interface data to descriptor
+		ma[0] = sa.sin_addr
+		mreq[0].imr_interface.s_addr = sa.sin_addr.s_addr
+	else
+		ma[0].s_addr = _M.htonl(INADDR_ANY)
+		mreq[0].imr_interface.s_addr = ma[0].s_addr
+	end
 	if C.setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, ma, ffi.sizeof('struct in_addr')) == -1 then
 		raise("syscall", "setsockopt:IP_MULTICAST_IF", fd)
 	end
@@ -566,7 +576,6 @@ function _M.setup_multicast(fd, mcast_addrstr, opts)
 		raise("syscall", "inet_aton", fd, mcast_addrstr)
 	end
 	mreq[0].imr_multiaddr.s_addr = ma[0].s_addr
-	mreq[0].imr_interface.s_addr = sa.sin_addr.s_addr
 	if C.setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, mreq, ffi.sizeof('struct ip_mreq')) == -1 then
 		raise("syscall", "setsockopt:IP_ADD_MEMBERSHIP", fd)
 	end

@@ -4,7 +4,7 @@ local tentacle = require 'pulpo.tentacle'
 local memory = require 'pulpo.memory'
 
 local NITER = 10
-local NLISTNER = 5
+local NLISTENER = 5
 local opts = {
 	cache_dir = '/tmp/pulpo'
 }
@@ -21,7 +21,7 @@ local g = task.newgroup(p, 0.01, 10)
 local client_msg = ("hello,luact poll"):rep(16)
 local finished = 0
 local MCAST_GROUP = '224.1.1.1:10000'
-for i =1,NLISTNER do
+for i =1,NLISTENER do
 	tentacle(function (id)
 		local s = udp.mcast_listen(p, MCAST_GROUP)
 		local a = memory.managed_alloc_typed('pulpo_addr_t')
@@ -52,13 +52,13 @@ tentacle(function ()
 		-- print('write start:')
 		s:write(client_msg, #client_msg, a)
 		g:sleep(0.1)
-		if finished >= NLISTNER then
+		if finished >= NLISTENER then
 			break
 		end
 		io.stdout:write('*')
 		io.stdout:flush()
 		cnt = cnt + 1
-		if cnt > (NITER * NLISTNER) * 2 then
+		if cnt > (NITER * NLISTENER) * 2 then
 			p:stop()
 			logger.error('takes too long time to finish')
 			os.exit(-2)
