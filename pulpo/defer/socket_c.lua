@@ -552,9 +552,9 @@ function _M.setup_multicast(fd, mcast_addrstr, opts)
 	local mreq = memory.managed_alloc_typed('struct ip_mreq')
 	ffi.fill(mreq, ffi.sizeof('struct ip_mreq'))
 	-- get information about specified interface 
-	local ret = _M.getifaddr(opts.ifname or _M.DEFAULT_IFNAME, AF_INET)
+	local ret = _M.getifaddr(opts.ifname, AF_INET)
 	local sa = ffi.cast('struct sockaddr_in*', ret:address())
-	logger.info('ifaddr', opts.ifname or _M.DEFAULT_IFNAME, _M.inet_namebyhost(sa))
+	-- logger.info('ifaddr', tostring(opts.ifname), _M.inet_namebyhost(sa))
 	-- set multicast interface data to descriptor
 	local ma = ffi.new('struct in_addr[1]')
 	ma[0] = sa.sin_addr
