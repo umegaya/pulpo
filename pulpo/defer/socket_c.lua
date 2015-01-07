@@ -13,7 +13,7 @@ local CDECLS = {
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", "inet_aton", 
 	"fcntl", "dup", "read", "write", "writev", "sendfile", 
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
-	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", 
+	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t",
 	"struct ifreq", "struct ip_mreq", "ioctl",
 }
 local CHEADER = [[
@@ -53,6 +53,10 @@ local CHEADER = [[
 		};
 		socklen_t len[1];
 	} pulpo_addr_t;
+	typedef struct pulpo_ifaddrs_t {
+		struct ifaddrs *mem;
+		struct ifaddrs *data;
+	} pulpo_ifaddrs_t;
 ]]
 if ffi.os == "Linux" then
 	-- enum declaration required
@@ -180,6 +184,24 @@ function addr_index:dump()
 end
 ffi.metatype('pulpo_addr_t', addr_mt)
 
+
+--> ctype pulpo_ifaddrs_t
+local function ifaddrs_gc(self)
+	---print('ifaddrs_gc', self.mem)
+	C.freeifaddrs(self.mem)
+end
+local ifaddrs_index = {}
+local ifaddrs_mt = {
+	__gc = ifaddrs_gc,
+	__index = ifaddrs_index,
+}
+function ifaddrs_index:address()
+	return self.data.ifa_addr
+end
+function ifaddrs_index:netmask()
+	return self.data.ifa_netmask
+end
+ffi.metatype('pulpo_ifaddrs_t', ifaddrs_mt)
 
 --> exception
 exception.define('syscall', {
@@ -393,16 +415,10 @@ function _M.getifaddr(ifname_filters, address_family, unmanaged)
 		C.freeifaddrs(ppifa_work[0])
 		raise("not_found", "interface:", ifname)
 	end
-	addr = ffi.cast('struct sockaddr *', memory.alloc(pifa.ifa_addr.sa_len))
-	mask = ffi.cast('struct sockaddr *', memory.alloc(pifa.ifa_netmask.sa_len))
-	if not unmanaged then
-		ffi.gc(addr, C.free)
-		ffi.gc(mask, C.free)
-	end
-	ffi.copy(addr, pifa.ifa_addr, pifa.ifa_addr.sa_len)
-	ffi.copy(mask, pifa.ifa_netmask, pifa.ifa_netmask.sa_len)
-	C.freeifaddrs(ppifa_work[0])
-	return addr, mask
+	local r = ffi.new('pulpo_ifaddrs_t')
+	r.data = pifa
+	r.mem = ppifa_work[0]
+	return r
 end
 
 local opts_work_buffer = memory.alloc_fill_typed('pulpo_sockopt_t')
@@ -535,9 +551,9 @@ function _M.setup_multicast(fd, mcast_addrstr, opts)
 	local mreq = memory.managed_alloc_typed('struct ip_mreq')
 	ffi.fill(mreq, ffi.sizeof('struct ip_mreq'))
 	-- get information about specified interface 
-	local sa_p = _M.getifaddr(opts.ifname or _M.DEFAULT_IFNAME, AF_INET)
-	local sa = ffi.cast('struct sockaddr_in*', sa_p)
-	logger.info('ifaddr', opts.ifname or _M.DEFAULT_IFNAME, _M.inet_namebyhost(sa_p))
+	local ret = _M.getifaddr(opts.ifname or _M.DEFAULT_IFNAME, AF_INET)
+	local sa = ffi.cast('struct sockaddr_in*', ret:address())
+	logger.info('ifaddr', opts.ifname or _M.DEFAULT_IFNAME, _M.inet_namebyhost(sa))
 	-- set multicast interface data to descriptor
 	local ma = ffi.new('struct in_addr[1]')
 	ma[0] = sa.sin_addr
