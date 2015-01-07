@@ -94,13 +94,15 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 assert(ffi.offsetof('struct sockaddr_in', 'sin_family') == ffi.offsetof('struct sockaddr_in6', 'sin6_family'))
 assert(ffi.offsetof('struct sockaddr_in', 'sin_port') == ffi.offsetof('struct sockaddr_in6', 'sin6_port'))
 
-local SOCK_STREAM, SOCK_DGRAM
+local SOCK_STREAM, SOCK_DGRAM, IPPROTO_IP
 if ffi.os == "OSX" then
 SOCK_STREAM = ffi_state.defs.SOCK_STREAM
 SOCK_DGRAM = ffi_state.defs.SOCK_DGRAM
+IPPROTO_IP = ffi_state.defs.IPPROTO_IP
 elseif ffi.os == "Linux" then
 SOCK_STREAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_STREAM)
 SOCK_DGRAM = ffi.cast('enum __socket_type', ffi_state.defs.SOCK_DGRAM)
+IPPROTO_IP = 0 -- because on linux, IPPROTO_IP is declared by anonymous enum, which cannot be processed by luajit 
 end
 local SOL_SOCKET = ffi_state.defs.SOL_SOCKET
 local SO_REUSEADDR = ffi_state.defs.SO_REUSEADDR
@@ -116,7 +118,6 @@ local F_SETFL = ffi_state.defs.F_SETFL
 local F_GETFL = ffi_state.defs.F_GETFL
 local O_NONBLOCK = ffi_state.defs.O_NONBLOCK
 
-local IPPROTO_IP = ffi_state.defs.IPPROTO_IP
 local IP_MULTICAST_IF = ffi_state.defs.IP_MULTICAST_IF
 local IP_MULTICAST_TTL = ffi_state.defs.IP_MULTICAST_TTL
 local IP_ADD_MEMBERSHIP = ffi_state.defs.IP_ADD_MEMBERSHIP
