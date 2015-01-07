@@ -10,6 +10,6 @@ addr, mask = socket.getifaddr()
 elseif ffi.os == "Linux" then
 addr, mask = socket.getifaddr()
 end
-print(addr, mask)
+print(socket.inet_namebyhost(addr), socket.inet_namebyhost(mask))
 
 return true

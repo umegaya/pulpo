@@ -166,7 +166,7 @@ end
 
 -- define handler
 HANDLER_TYPE_UDP = poller.add_handler("udp", udp_read, udp_write, udp_gc, udp_addr)
-HANDLER_TYPE_UDP_CONNECTED = poller.add_handler("udp", udp_read, udp_write_connected, udp_gc, udp_addr, udp_writev, udp_writef)
+HANDLER_TYPE_UDP_CONNECTED = poller.add_handler("udpc", udp_read, udp_write_connected, udp_gc, udp_addr, udp_writev, udp_writef)
 
 -- connector
 function open(p, addr, opts)
@@ -179,8 +179,8 @@ function open(p, addr, opts)
 	end
 	return fd, ctx
 end
-function _M.create(p, addr, opts)
-	local fd, ctx = open(p, addr, opts)
+function _M.create(p, opts)
+	local fd, ctx = open(p, "0.0.0.0", opts)
 	return p:newio(fd, HANDLER_TYPE_UDP, ctx)
 end
 function _M.connect(p, addr, opts)
@@ -204,7 +204,7 @@ local function basic_listen(addr, opts)
 		C.close(fd)
 		raise('syscall', 'bind', fd)
 	end
-	return fd, ai
+	return fd, a
 end
 function _M.listen(p, addr, opts)
 	local fd = basic_listen(addr, opts)
@@ -213,13 +213,15 @@ function _M.listen(p, addr, opts)
 end
 
 function _M.mcast_listen(p, addr, opts)
-	local fd, ai = basic_listen("0.0.0.0", opts)
-	local ok, r = pcall(socket.setup_multicast, socket, fd, addr, opts, ai)
+	-- replace multicast group setting to INADDR_ANY
+	local fd, a = basic_listen(addr:gsub("^[%.0-9]+", "0.0.0.0"), opts)
+	local ok, r = pcall(socket.setup_multicast, fd, addr:match("^[%.0-9]+"), opts or {}, a)
 	if not ok then
+		print('mcast_listen error', r)
 		C.close(fd)
 		error(r)
 	end
-	logger.info('mcast_listen:', fd, opts.ifn or socket.DEFAULT_IFNAME, addr)
+	logger.info('mcast_listen:', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_UDP, opts and socket.table2sockopt(opts, true) or nil)
 end
 

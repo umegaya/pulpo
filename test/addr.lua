@@ -15,8 +15,10 @@ poller.initialize(opts)
 local socket = require 'pulpo.socket'
 
 local ADDR = "127.0.0.1:8888"
-local a = ffi.new('pulpo_addr_t')
+local a, b = ffi.new('pulpo_addr_t'), ffi.new('pulpo_addr_t')
 a:set(ADDR)
 assert(tostring(a) == ADDR)
+b:set(ADDR)
+assert(a == b)
 
 return true

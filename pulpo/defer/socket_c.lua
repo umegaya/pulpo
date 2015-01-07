@@ -10,11 +10,11 @@ local _M = (require 'pulpo.package').module('pulpo.defer.socket_c')
 
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
-	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", 
+	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", "inet_aton", 
 	"fcntl", "dup", "read", "write", "writev", "sendfile", 
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
 	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", 
-	"struct ifreq", "struct ip_mreq", 
+	"struct ifreq", "struct ip_mreq", "ioctl",
 }
 local CHEADER = [[
 	#include <sys/socket.h>
@@ -259,7 +259,7 @@ local addrinfo_buffer = ffi.new('struct addrinfo * [1]')
 local hint_buffer = ffi.new('struct addrinfo[1]')
 function _M.inet_hostbyname(addr, addrp, socktype)
 	-- print(addr, addrp, socktype, debug.traceback())
-	local s,e,host,port = addr:find('([%w%.%_]+):([0-9]+)')
+	local s,e,host,port = addr:find('([%w%.%_]+):?([0-9]*)')
 	if not s then 
 		return -1
 	end
@@ -347,9 +347,9 @@ else
 raise("invalid", "os", ffi.os)
 end
 
-function _M.getifaddr(ifname_filters, address_family)
-	local ppifa = ffi.new('struct ifaddrs *[1]')
-	if 0 ~= C.getifaddrs(ppifa) then
+local ppifa_work = ffi.new('struct ifaddrs *[1]')
+function _M.getifaddr(ifname_filters, address_family, unmanaged)
+	if 0 ~= C.getifaddrs(ppifa_work) then
 		error('fail to get ifaddr list:'..ffi.errno())
 	end
 	local pifa
@@ -363,36 +363,45 @@ function _M.getifaddr(ifname_filters, address_family)
 			raise("invalid", "os", ffi.os)
 		end
 	end 
+	if type(ifname_filters) ~= 'table' then
+		ifname_filters = {ifname_filters}
+	end
 	for _,ifname_filter in ipairs(ifname_filters) do
-		pifa = ppifa[0]
-		if type(ifname_filter) == 'string' then
-			while pifa ~= ffi.NULL do
-				-- print('check', ffi.string(pifa.ifa_name), pifa.ifa_addr.sa_family)
-				if ffi.string(pifa.ifa_name) == ifname_filter then
-					if (not address_family) or (pifa.ifa_addr.sa_family == address_family) then
+		pifa = ppifa_work[0]
+		while pifa ~= ffi.NULL do
+			-- print('check', ffi.string(pifa.ifa_name), pifa.ifa_addr.sa_family, pifa.ifa_addr, pifa.ifa_netmask)
+			if pifa.ifa_addr ~= ffi.NULL and pifa.ifa_netmask ~= NULL then
+				if type(ifname_filter) == 'string' then
+					if ffi.string(pifa.ifa_name) == ifname_filter then
+						if (not address_family) or (pifa.ifa_addr.sa_family == address_family) then
+							break
+						end
+					end
+				elseif type(ifname_filter) == 'function' then
+					if ifname_filter(pifa) then
 						break
 					end
 				end
-				pifa = pifa.ifa_next
 			end
-		elseif type(ifname_filter) == 'function' then
-			while pifa ~= ffi.NULL do
-				if ifname_filter(pifa) then
-					break
-				end
-				pifa = pifa.ifa_next
-			end
+			pifa = pifa.ifa_next
 		end
 		if pifa ~= ffi.NULL then
 			break
 		end
 	end
 	if pifa == ffi.NULL then
-		C.freeifaddrs(ppifa[0])
+		C.freeifaddrs(ppifa_work[0])
 		raise("not_found", "interface:", ifname)
 	end
-	addr,mask = pifa.ifa_addr, pifa.ifa_netmask
-	C.freeifaddrs(ppifa[0])
+	addr = ffi.cast('struct sockaddr *', memory.alloc(pifa.ifa_addr.sa_len))
+	mask = ffi.cast('struct sockaddr *', memory.alloc(pifa.ifa_netmask.sa_len))
+	if not unmanaged then
+		ffi.gc(addr, C.free)
+		ffi.gc(mask, C.free)
+	end
+	ffi.copy(addr, pifa.ifa_addr, pifa.ifa_addr.sa_len)
+	ffi.copy(mask, pifa.ifa_netmask, pifa.ifa_netmask.sa_len)
+	C.freeifaddrs(ppifa_work[0])
 	return addr, mask
 end
 
@@ -522,35 +531,31 @@ function _M.datagram(addrstr, opts, addr)
 end
 
 local intval_worker = memory.alloc_typed('pulpo_bytes_op_t')
-function _M.setup_multicast(fd, mcast_addrstr, opts, addr)
-	local ifr = ffi.new('struct ifreq[1]')
-	local mreq = memory.managed_alloc_typed('struct ip_mreq[1]')
+function _M.setup_multicast(fd, mcast_addrstr, opts)
+	local mreq = memory.managed_alloc_typed('struct ip_mreq')
 	ffi.fill(mreq, ffi.sizeof('struct ip_mreq'))
 	-- get information about specified interface 
-	ifr[0].ifr_addr.sa_family = addr.p.sa_family
-	ffi.copy(ifr[0].ifr_name, opts.ifname or _M.DEFAULT_IFNAME, IFNAMSIZ-1)
-	if -1 == C.ioctl(fd, SIOCGIFADDR, ifr) then
-		raise("syscall", "ioctl")
-	end
+	local sa_p = _M.getifaddr(opts.ifname or _M.DEFAULT_IFNAME, AF_INET)
+	local sa = ffi.cast('struct sockaddr_in*', sa_p)
+	logger.info('ifaddr', opts.ifname or _M.DEFAULT_IFNAME, _M.inet_namebyhost(sa_p))
 	-- set multicast interface data to descriptor
-	local sa_p = ffi.cast('char *', ifr) + ffi.offsetof('struct ifreq', 'ifr_addr')
-	if C.setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, sa_p, ffi.sizeof('struct sockaddr_in')) == -1 then
-		raise("syscall", "setsockopt:IP_MULTICAST_IF")
+	local ma = ffi.new('struct in_addr[1]')
+	ma[0] = sa.sin_addr
+	if C.setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, ma, ffi.sizeof('struct in_addr')) == -1 then
+		raise("syscall", "setsockopt:IP_MULTICAST_IF", fd)
 	end
 	-- join multicast membership and set ttl
-	local a = ffi.new('struct in_addr[1]')
-	local sa = ffi.cast('struct sockaddr_in*', sa_p)
-	if 0 == inet_aton(mcast_addrstr, a) then
-		raise("syscall", "inet_aton", addr)
+	if 0 == C.inet_aton(mcast_addrstr, ma) then
+		raise("syscall", "inet_aton", fd, mcast_addrstr)
 	end
-	mreq[0].imr_multiaddr.s_addr = a.s_addr
+	mreq[0].imr_multiaddr.s_addr = ma[0].s_addr
 	mreq[0].imr_interface.s_addr = sa.sin_addr.s_addr
-	if C.setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, mreq, sizeof(mreq)) == -1 then
-		raise("syscall", "setsockopt:IP_ADD_MEMBERSHIP")
+	if C.setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, mreq, ffi.sizeof('struct ip_mreq')) == -1 then
+		raise("syscall", "setsockopt:IP_ADD_MEMBERSHIP", fd)
 	end
-	intval_worker.l = opts.ttl or 5
+	intval_worker.l = opts.ttl or 10
 	if C.setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, intval_worker.p, ffi.sizeof('int')) == -1 then
-		raise("syscall", "setsockopt:IP_MULTICAST_TTL")
+		raise("syscall", "setsockopt:IP_MULTICAST_TTL", fd)
 	end
 	return fd
 end

@@ -60,8 +60,7 @@ for cnt=1,NCLIENTS,1 do
 		while i < NITER do
 			s:write(msg, #msg)
 			len = s:read(ptr, 256, a2)
-			assert(a.p[0].sa_family == 2, "wrong af:"..tostring(a.p[0].sa_family))
-			-- assert(a:__eq(a2))
+			assert(a[0] == a2[0])
 			local rmsg = ffi.string(ptr,len)
 			assert(rmsg == msg, "illegal packet received:"..msg)
 			i = i + 1

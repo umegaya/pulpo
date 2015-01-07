@@ -12,7 +12,7 @@ local function proc(tm, fn, ...)
 	while true do
 		local n = tm:read()
 		if not n then
-			logger.info('timer:', io:fd(), 'closed by event:', tp)
+			logger.info('timer:', tm:fd(), 'closed by event:', tp)
 			goto exit
 		end
 		for i=1,tonumber(n),1 do
