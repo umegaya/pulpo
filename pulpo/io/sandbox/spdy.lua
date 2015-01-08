@@ -49,14 +49,14 @@ end
 
 function _M.listen(p, addr, opts)
 	opts = opts or default_opt
-	local ai = memory.managed_alloc_typed('pulpo_addrinfo_t')
-	local fd = socket.create_stream(addr, opts.sockopts, ai)
+	local a = memory.managed_alloc_typed('pulpo_addr_t')
+	local fd = socket.create_stream(addr, opts.sockopts, a)
 	if not fd then error('fail to create socket:'..errno.errno()) end
 	if not socket.set_reuse_addr(fd, true) then
 		C.close(fd)
 		error('fail to listen:set_reuse_addr:'..errno.errno())
 	end
-	if C.bind(fd, ai.addrp, ai.alen[0]) < 0 then
+	if C.bind(fd, a.p, a.len[0]) < 0 then
 		C.close(fd)
 		error('fail to listen:bind:'..errno.errno())
 	end

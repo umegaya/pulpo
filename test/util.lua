@@ -4,12 +4,12 @@ local util = require 'pulpo.util'
 local socket = require 'pulpo.socket'
 local ffi = require 'ffiex.init'
 
-local addr, mask
+local ret
 if ffi.os == "OSX" then
-addr, mask = socket.getifaddr() 
+ret = socket.getifaddr() 
 elseif ffi.os == "Linux" then
-addr, mask = socket.getifaddr()
+ret = socket.getifaddr()
 end
-print(addr, mask)
+print(socket.inet_namebyhost(ret:address()), socket.inet_namebyhost(ret:netmask()))
 
 return true

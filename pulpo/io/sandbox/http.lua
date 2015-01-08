@@ -23,7 +23,7 @@ local EINVAL = errno.EINVAL
 
 ffi.cdef [[
 typedef struct pulpo_tcp_context {
-	pulpo_addrinfo_t addrinfo;
+	pulpo_addr_t addr;
 } pulpo_tcp_context_t;
 ]]
 
@@ -31,12 +31,11 @@ typedef struct pulpo_tcp_context {
 local function tcp_connect(io)
 ::retry::
 	local ctx = io:ctx('pulpo_tcp_context_t*')
-	local n = C.connect(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen[0])
+	local n = C.connect(io:fd(), ctx.addr.p, ctx.addr.len[0])
 	if n < 0 then
 		local eno = errno.errno()
 		-- print('tcp_connect:', io:fd(), n, eno)
 		if eno == EINPROGRESS then
-			-- print('EINPROGRESS:to:', socket.inet_namebyhost(ctx.addrinfo.addrp))
 			io:wait_write()
 			return
 		elseif eno == ECONNREFUSED then
@@ -114,7 +113,7 @@ local function tcp_accept(io)
 		ctx = memory.alloc_typed('pulpo_tcp_context_t')
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
-	local n = C.accept(io:fd(), ctx.addrinfo.addrp, ctx.addrinfo.alen)
+	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)
 	if n < 0 then
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
