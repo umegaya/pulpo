@@ -11,6 +11,13 @@ local opts = {
 	cache_dir = '/tmp/pulpo',
 	rmax = 1024 * 1024,
 }
+-- on travis CI's execute user does not have the write to carry out sysctl.
+-- so we reduce number of client to avoid udp packet missing by read buf flood. 
+local arg = {...}
+if arg[1] == "travis" then
+	NCLIENTS = 100
+	opts.rmax = nil
+end
 thread.initialize(opts)
 poller.initialize(opts)
 

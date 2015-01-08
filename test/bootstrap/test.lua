@@ -7,7 +7,7 @@ while true do
 	file = ('test/' .. file)
 	if file:find('%.lua$') then
 		term.resetcolor(); print('test: '..file..' ==========================================')
-		local ok, r = pcall(os.execute, arg[-1].." test/tools/launch.lua "..file)
+		local ok, r = pcall(os.execute, arg[-1].." test/tools/launch.lua "..file.." "..table.concat(arg, " "))
 		if ok and r then
 			if r ~= 0 then
 				term.red(); print('test fails:' .. file .. '|' .. r)

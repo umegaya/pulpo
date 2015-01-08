@@ -1,7 +1,7 @@
 print('launch:', arg[1])
 local ok, r = pcall(loadfile, arg[1])
 if ok and r then
-	ok, r = pcall(r)
+	ok, r = pcall(r, unpack(arg, 2))
 	if ok and r then
 		os.exit(0)
 	else
