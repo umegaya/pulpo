@@ -361,11 +361,11 @@ function _M.inet_namebyfd(fd, dst, len)
 end
 local sockaddr_buf = ffi.new('struct sockaddr_in[1]')
 function _M.numeric_ipv4_addr_from_sockaddr(sa)
-	return _M.htonl(ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr)
+	return ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr
 end
 function _M.numeric_ipv4_addr_by_host(host)
 	if _M.inet_hostbyname(host, sockaddr_buf) >= 0 then
-		return _M.htonl(ffi.cast('struct sockaddr_in*', sockaddr_buf).sin_addr.s_addr)
+		return ffi.cast('struct sockaddr_in*', sockaddr_buf).sin_addr.s_addr
 	else
 		exception.raise('invalid', 'address', host)
 	end
