@@ -76,14 +76,32 @@ function _M.table_equals(t1, t2)
 	return true
 end
 
-function _M.random_k_from(t, k)
+function _M.random_k_from(t, k, filter)
 	if #t <= k then 
 		return t
 	else
-		local r, tmp = {}, _M.copy_table(t)
-		for i=1,k,1 do
-			local e = table.remove(tmp, math.random(1, #tmp))
-			table.insert(r, e)
+		local indices = {}
+		local last = #t
+		local safe_count = 0
+		while #indices < k do
+			local idx = math.random(1, #t)
+			local good = true
+			if filter and (not filter(t[idx])) then
+				good = false
+			end
+			for j=1,#indices do
+				if idx ~= indices[j] then
+					good = false
+					break
+				end
+			end
+			if good then
+				table.insert(indices, rindex)
+			end
+			safe_count = safe_count + 1
+			if safe_count > #t then
+				return nil
+			end
 		end
 		return r
 	end
@@ -123,6 +141,27 @@ function _M.encode_proc(proc)
 end
 function _M.create_proc(executable)
 	return _M.decode_proc(_M.encode_proc(executable))
+end
+function _M.qsort(x, l, r, f)
+	if l < r then
+		local m = math.random(l, r)	-- choose a random pivot in range l..u
+		x[l], x[m] = x[m], x[l]			-- swap pivot to first position
+		local t = x[l]				-- pivot value
+		m = l
+		local i = l + 1
+		while i <= r do
+			-- invariant: x[l+1..m] < t <= x[m+1..i-1]
+			if f(x[i],t) then
+			  m = m + 1
+			  x[m], x[i] = x[i], x[m]		-- swap x[i] and x[m]
+			end
+			i = i + 1
+		end
+		x[l], x[m] = x[m], x[l]			-- swap pivot to a valid place
+		-- x[l+1..m-1] < x[m] <= x[m+1..u]
+		qsort(x, l, m-1, f)
+		qsort(x, m+1, r, f)
+	end
 end
 
 return _M

@@ -11,10 +11,10 @@ local _M = (require 'pulpo.package').module('pulpo.defer.socket_c')
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", "inet_aton", 
-	"fcntl", "dup", "read", "write", "writev", "sendfile", 
+	"fcntl", "dup", "read", "write", "writev", "sendfile", "sendmsg", "recvmsg",
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
 	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t",
-	"struct ifreq", "struct ip_mreq", "ioctl",
+	"struct ifreq", "struct ip_mreq", "struct msghdr", "ioctl",
 }
 local CHEADER = [[
 	#include <sys/socket.h>
@@ -175,6 +175,17 @@ function addr_index:set(addrstr, socktype)
 end
 function addr_index:init()
 	self.len[0] = (ffi.sizeof('pulpo_addr_t') - ffi.sizeof('socklen_t'))
+end
+function addr_index:as_machine_id()
+	return _M.numeric_ipv4_addr_from_sockaddr(self.p)
+end
+function addr_index:set_by_machine_id(machine_id, port)
+	local sa = self.addr4
+	sa.sin_addr.s_addr = machine_id
+	sa.sin_port = _M.htons(port)
+	sa.sin_family = AF_INET
+	ffi.fill(sa.sin_zero, 8)
+	self.len[0] = ffi.sizeof('struct sockaddr_in')
 end
 function addr_index:dump()
 	io.write('buffer:len:')

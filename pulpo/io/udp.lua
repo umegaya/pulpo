@@ -125,6 +125,22 @@ local function udp_write(io, ptr, len, addr)
 	return n
 end
 
+local sendmsg_work = memory.managed_alloc_typed('struct msghdr')
+ffi.fill(sendmsg_work, ffi.sizeof('struct msghdr'))
+local function udp_writev(io, vec, vlen, addr)
+::retry::
+	sendmsg_work.msg_name = addr.p
+	sendmsg_work.msg_namelen = addr.len[0]
+	sendmsg_work.msg_iov = vec
+	sendmsg_work.msg_iovlen = vlen
+	local n = C.sendmsg(io:fd(), sendmsg_work, 0)
+	if n < 0 then
+		on_write_error(io, n)
+		goto retry
+	end
+	return n
+end
+
 local function udp_write_connected(io, ptr, len)
 ::retry::
 	local n = C.send(io:fd(), ptr, len, 0)
@@ -135,7 +151,7 @@ local function udp_write_connected(io, ptr, len)
 	return n
 end
 
-local function udp_writev(io, vec, vlen)
+local function udp_writev_connected(io, vec, vlen)
 ::retry::
 	local n = C.writev(io:fd(), vec, vlen)
 	if n < 0 then
@@ -165,8 +181,8 @@ local function udp_addr(io)
 end
 
 -- define handler
-HANDLER_TYPE_UDP = poller.add_handler("udp", udp_read, udp_write, udp_gc, udp_addr)
-HANDLER_TYPE_UDP_CONNECTED = poller.add_handler("udpc", udp_read, udp_write_connected, udp_gc, udp_addr, udp_writev, udp_writef)
+HANDLER_TYPE_UDP = poller.add_handler("udp", udp_read, udp_write, udp_gc, udp_addr, udp_writev)
+HANDLER_TYPE_UDP_CONNECTED = poller.add_handler("udpc", udp_read, udp_write_connected, udp_gc, udp_addr, udp_writev_connected, udp_writef)
 
 -- connector
 function open(p, addr, opts)
