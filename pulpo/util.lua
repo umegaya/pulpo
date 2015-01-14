@@ -149,26 +149,47 @@ end
 function _M.create_proc(executable)
 	return _M.decode_proc(_M.encode_proc(executable))
 end
-function _M.qsort(x, l, r, f)
+function _M.qsort(x, l, r, f, sw)
 	if l < r then
 		local m = math.random(l, r)	-- choose a random pivot in range l..u
-		x[l], x[m] = x[m], x[l]			-- swap pivot to first position
+		if sw then
+			sw(x, l, m)
+		else
+			x[l], x[m] = x[m], x[l]			-- swap pivot to first position
+		end
 		local t = x[l]				-- pivot value
 		m = l
 		local i = l + 1
 		while i <= r do
 			-- invariant: x[l+1..m] < t <= x[m+1..i-1]
 			if f(x[i],t) then
-			  m = m + 1
-			  x[m], x[i] = x[i], x[m]		-- swap x[i] and x[m]
+				m = m + 1
+				if sw then
+			 		sw(x, m, i)
+				else
+					x[m], x[i] = x[i], x[m]		-- swap x[i] and x[m]
+				end
 			end
 			i = i + 1
 		end
-		x[l], x[m] = x[m], x[l]			-- swap pivot to a valid place
+		if sw then
+			sw(x, l, m)
+		else
+			x[l], x[m] = x[m], x[l]			-- swap pivot to first position
+		end
 		-- x[l+1..m-1] < x[m] <= x[m+1..u]
-		qsort(x, l, m-1, f)
-		qsort(x, m+1, r, f)
+		_M.qsort(x, l, m-1, f, sw)
+		_M.qsort(x, m+1, r, f, sw)
 	end
 end
+--[[
+local data = { [0] = 0, 6, 8, 3, 4, 9, 1, 2, 5, 7}
+_M.qsort(data, 0, 9, function (a, b)
+	return a < b
+end)
+for i=0,#data do
+	assert(i == data[i])
+end
+]]--
 
 return _M
