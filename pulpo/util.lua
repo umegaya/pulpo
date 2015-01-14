@@ -76,6 +76,7 @@ function _M.table_equals(t1, t2)
 	return true
 end
 
+-- TODO : faster pick up routine
 function _M.random_k_from(t, k, filter)
 	if #t <= k then 
 		return t
@@ -88,20 +89,26 @@ function _M.random_k_from(t, k, filter)
 			local good = true
 			if filter and (not filter(t[idx])) then
 				good = false
-			end
-			for j=1,#indices do
-				if idx ~= indices[j] then
-					good = false
-					break
+			else
+				for j=1,#indices do
+					if idx == indices[j] then
+						good = false
+						break
+					end
 				end
 			end
 			if good then
-				table.insert(indices, rindex)
+				table.insert(indices, idx)
 			end
 			safe_count = safe_count + 1
-			if safe_count > #t then
+			if safe_count > 1000000 then
+				logger.error('safe_count exceed', safe_count, #indices)
 				return nil
 			end
+		end
+		local r = {}
+		for i=1,#indices do
+			table.insert(r, t[indices[i]])
 		end
 		return r
 	end

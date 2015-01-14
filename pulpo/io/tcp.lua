@@ -218,6 +218,9 @@ function _M.connect(p, addr, opts)
 	end
 	local io = p:newio(fd, HANDLER_TYPE_TCP, ctx)
 	event.add_to(io, 'open')
+	if _M.DEBUG then
+		logger.info('tcp', 'connect', fd, addr)
+	end
 	-- tcp_connect(io)
 	return io
 end
@@ -238,7 +241,7 @@ function _M.listen(p, addr, opts)
 		C.close(fd)
 		raise('syscall', 'listen', fd)
 	end
-	logger.info('listen:', fd, addr, p)
+	logger.info('tcp', 'listen', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts, true) or nil)
 end
 
