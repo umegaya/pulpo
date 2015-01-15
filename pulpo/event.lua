@@ -192,12 +192,7 @@ function _M.wait(filter, ...)
 	end
 	for i=1,#list,1 do
 		local ev = list[i]
-		if rev == ev then
-			assert(co == ev.waitq[#ev.waitq])
-			table.remove(ev.waitq)
-		else
-			unregister_thread(ev, co)
-		end
+		unregister_thread(ev, co)
 	end
 	return unpack(tmp)
 end
@@ -251,8 +246,7 @@ function _M.join(timeout, ...)
 				local ev = list[i]
 				if rev == ev then
 					table.remove(list, i)
-					assert(co == ev.waitq[#ev.waitq])
-					table.remove(ev.waitq)
+					unregister_thread(ev, co)
 					break
 				end
 			end

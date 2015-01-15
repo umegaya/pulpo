@@ -224,7 +224,7 @@ local function basic_listen(addr, opts)
 end
 function _M.listen(p, addr, opts)
 	local fd = basic_listen(addr, opts)
-	logger.info('listen:', fd, addr)
+	logger.info('udp', 'listen', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_UDP, opts and socket.table2sockopt(opts, true) or nil)
 end
 
@@ -233,11 +233,10 @@ function _M.mcast_listen(p, addr, opts)
 	local fd, a = basic_listen(addr:gsub("^[%.0-9]+", "0.0.0.0"), opts)
 	local ok, r = pcall(socket.setup_multicast, fd, addr:match("^[%.0-9]+"), opts or {}, a)
 	if not ok then
-		print('mcast_listen error', r)
 		C.close(fd)
 		error(r)
 	end
-	logger.info('mcast_listen:', fd, addr)
+	logger.info('udp', 'mcast_listen', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_UDP, opts and socket.table2sockopt(opts, true) or nil)
 end
 

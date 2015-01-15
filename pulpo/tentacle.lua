@@ -9,20 +9,17 @@ local function err_handler(e)
 	else
 		logger.report('tentacle result:', tostring(e), debug.traceback())
 	end
+	if _M.TRACE then
+		local co = _M.running()
+		logger.report('last yield', co.ybt)
+		logger.report('last resume', co.rbt)
+		co.ybt = nil
+		co.rbt = nil
+	end
 	return e
 end
 local function loop(co)
-	if false and _M.DEBUG then
-		print('coro:yield enter', co[1])
-		local ret = {coroutine.yield()}
-		print('coro:yield result', co[1], unpack(ret))
-		ret = {xpcall(unpack(ret))}
-		print('coro:main', co[1], unpack(ret))
-		co:emit('end', unpack(ret))
-		print('coro:main notice end', co[1])
-	else
-		co:emit('end', xpcall(coroutine.yield()))
-	end
+	co:emit('end', xpcall(coroutine.yield()))
 end
 local function main(co)
 	while xpcall(loop, err_handler, co) do
@@ -54,17 +51,11 @@ local metatable = {}
 local tentacle_mt = {}
 function metatable.__call(t, body, ...)
 	local c = new()
-	if _M.DEBUG2 then
-		c.bt = debug.traceback()
-	end
 	_M.resume(c, body, err_handler, ...)
 	return c
 end
 function tentacle_mt.__call(t, ...)
 	local c = new()
-	if _M.DEBUG2 then
-		c.bt = debug.traceback()
-	end
 	_M.resume(c, t[1], err_handler, ...)
 	return c
 end
@@ -84,6 +75,9 @@ function _M.yield(obj)
 	if (not obj) then
 		logger.report('invalid yield result', obj, debug.traceback())
 	end
+	if _M.TRACE then
+		_M.running().ybt = debug.traceback()
+	end
 	return coroutine.yield(obj)
 end
 function _M.resume(co, ...)
@@ -92,6 +86,9 @@ function _M.resume(co, ...)
 	end
 	local ok, r = coroutine.resume(co[1], ...)
 	co[2] = ok and r
+	if _M.TRACE then
+		co.rbt = debug.traceback()
+	end
 	--[[
 	if ok and (not co[2]) then
 		local bt = debug.traceback()
