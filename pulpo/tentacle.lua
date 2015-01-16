@@ -1,6 +1,7 @@
 local _M = {}
 local cache = {}
 local map = {}
+local logger = _G.logger or print
 
 -- local functions
 local function err_handler(e)
@@ -115,10 +116,11 @@ function _M.cancel(co)
 	elseif coroutine.status(co[1]) ~= 'dead' then
 		if co[3] then 
 			logger.warn('no canceler', co[1], 'but it is cache for next use: ok')
+		elseif coroutine.status(co[1]) == 'normal' then
+			-- eg) _M.cancel is called from tentacle which is to be canceled. (including via resume chain)
+			-- that means, the tentacle keep on running after this cancel call, which may cause a lot of difficult bug.
+			error('can not cancel running tentacle:'..tostring(co[1])..'@'..tostring(co))
 		else
-			-- eg) _M.cancel is called from coroutine which is to be canceled. (including via event emit chain)
-			-- better to finish such a coroutine by seeing some flag and exit main loop. 
-			-- because it helps coroutine recycle.
 			logger.warn('no canceler', co[1], 'it yields under un-cancelable operation?', coroutine.status(co[1]))
 		end
 	end
