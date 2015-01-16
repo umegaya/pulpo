@@ -152,19 +152,20 @@ local function run_ptrace_process(...)
 	for _,arg in pairs({...}) do
 		table.insert(tmp, tostring(arg))
 	end
-        local cmd = (
-                'luajit -e "(require \'pulpo.thread\').initialize({ cache_dir=\'%s\'});'..
-                '(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
-        ):format(
-                loader.cache_dir,
-                C.getpid(), table.concat(tmp, ',')
-        )
-        logger.info('exec', cmd)
-        local r = os.execute(cmd)
-        if r ~= 0 then
-       		error('trap fails:'..r)
-        end
-        return r
+    local cmd = (
+            '%s -e "(require \'pulpo.thread\').initialize({ cache_dir=\'%s\'});'..
+            '(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
+    ):format(
+    		arg[-1],
+            loader.cache_dir,
+            C.getpid(), table.concat(tmp, ',')
+    )
+    logger.info('exec', cmd)
+    local r = os.execute(cmd)
+    if r ~= 0 then
+   		error('trap fails:'..r)
+    end
+    return r
 end
 
 function _M.untrap(idx)
