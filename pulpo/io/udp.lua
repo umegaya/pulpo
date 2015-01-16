@@ -125,8 +125,7 @@ local function udp_write(io, ptr, len, addr)
 	return n
 end
 
-local sendmsg_work = memory.managed_alloc_typed('struct msghdr')
-ffi.fill(sendmsg_work, ffi.sizeof('struct msghdr'))
+local sendmsg_work = memory.alloc_fill_typed('struct msghdr')
 local function udp_writev(io, vec, vlen, addr)
 ::retry::
 	sendmsg_work.msg_name = addr.p

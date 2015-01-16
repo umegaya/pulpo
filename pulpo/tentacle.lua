@@ -80,10 +80,15 @@ function _M.yield(obj)
 	end
 	return coroutine.yield(obj)
 end
+function _M.trace(co)
+	logger.report('last yield', co.ybt)
+	logger.report('last resume', co.rbt)
+end	
 function _M.resume(co, ...)
 	if not co then
 		logger.report('invalid coroutine:', debug.traceback())
 	end
+	co[2] = nil -- no more cancelable by previous object
 	local ok, r = coroutine.resume(co[1], ...)
 	co[2] = ok and r
 	if _M.TRACE then
@@ -111,6 +116,9 @@ function _M.cancel(co)
 		if co[3] then 
 			logger.warn('no canceler', co[1], 'but it is cache for next use: ok')
 		else
+			-- eg) _M.cancel is called from coroutine which is to be canceled. (including via event emit chain)
+			-- better to finish such a coroutine by seeing some flag and exit main loop. 
+			-- because it helps coroutine recycle.
 			logger.warn('no canceler', co[1], 'it yields under un-cancelable operation?', coroutine.status(co[1]))
 		end
 	end

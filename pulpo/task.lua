@@ -1,6 +1,7 @@
 local timer = require 'pulpo.io.timer'
 local tentacle = require 'pulpo.tentacle'
 local util = require 'pulpo.util'
+local pulpo = require 'pulpo.init'
 local event = require 'pulpo.event'
 local _M = {}
 ------------------------------------------------------------
@@ -70,7 +71,10 @@ function taskgrp_index.loop(t)
 		local ok, r = pcall(fn[2], fn[3])
 		if ok and (r ~= false) then
 			local nxt = t:get_dest_index(fn[1])
-			table.insert(t.queue[nxt], fn)
+			local q = t.queue[nxt]
+			table.insert(q, fn)
+			fn[4] = q
+			fn[5] = #q
 		end
 	end
 	t.index = t.index + 1
@@ -96,17 +100,18 @@ function taskgrp_index.add(t, start, intv, fn, arg)
 	tuple[5] = #q
 	return r
 end
+-- sleep
 local function sleep_proc(co)
 	tentacle.resume(co)
 	return false
 end
--- sleep
 function taskgrp_index.sleep(t, sec)
 	local co = tentacle.running()
 	if not co then
 		logger.report('invalid tentacle called sleep', debug.traceback())
 	end
-	tentacle.yield(t:add(sec, sec, sleep_proc, co))
+	local tuple = t:add(sec, sec, sleep_proc, co)
+	tentacle.yield(tuple)
 end
 -- alarm
 local function alarm_proc(em)

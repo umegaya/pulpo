@@ -101,9 +101,8 @@ function _M.random_k_from(t, k, filter)
 				table.insert(indices, idx)
 			end
 			safe_count = safe_count + 1
-			if safe_count > 1000000 then
-				logger.error('safe_count exceed', safe_count, #indices)
-				return nil
+			if safe_count > (3 * #t) then
+				break
 			end
 		end
 		local r = {}
