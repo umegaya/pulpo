@@ -61,7 +61,7 @@ function causal_relation_checker_mt:fresh(lc, payload)
 	if lc < self.oldest then
 		return false
 	else
-		local idx = lc % self.bucket_size
+		local idx = tonumber(lc % self.bucket_size)
 		local prev_clock = self.bucket_clock[idx] 
 		local m = payload_map[self]
 		if prev_clock == lc then
