@@ -109,6 +109,10 @@ function _M.cmp(dst, src, sz)
 	return C.memcmp(dst, src, sz) == 0
 end
 
+function _M.rawcmp(dst, src, sz)
+	return C.memcmp(dst, src, sz)
+end
+
 function _M.free(p)
 	if _M.DEBUG then
 		print('free:', p, debug.traceback())
