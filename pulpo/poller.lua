@@ -57,7 +57,7 @@ function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
 function io_index.address(t)
-	return address_handler[t:type()](t)
+	return address_handlers[t:type()](t)
 end
 function io_index.close(t, reason)
 	-- logger.info("fd=", t:fd(), " closed by user")
