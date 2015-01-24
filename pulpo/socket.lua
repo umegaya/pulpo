@@ -1,6 +1,55 @@
 local require_on_boot = (require 'pulpo.package').require
 local _M = require_on_boot 'pulpo.defer.socket_c'
 
+local ffi = require 'ffiex.init'
+ffi.cdef [[
+union luact_endian_checker {
+	uint16_t s;
+	uint8_t bytes[2];
+};
+]]
+local c = ffi.new('union luact_endian_checker')
+c.s = 1
+local LITTLE_ENDIAN = (c.bytes[1] == 1)
+
+-- returns true if litten endian arch, otherwise big endian. 
+-- now this framework does not support pdp endian.
+function _M.little_endian()
+	return LITTLE_ENDIAN
+end
+
+--- Convert given short value to network byte order on little endian hosts
+-- @param x	Unsigned integer value between 0x0000 and 0xFFFF
+-- @return	Byte-swapped value
+-- @see		htonl
+-- @see		ntohs
+function _M.htons(x)
+	if LITTLE_ENDIAN then
+		return bit.bor(
+			bit.rshift( x, 8 ),
+			bit.band( bit.lshift( x, 8 ), 0xFF00 )
+		)
+	else
+		return x
+	end
+end
+
+--- Convert given long value to network byte order on little endian hosts
+-- @param x	Unsigned integer value between 0x00000000 and 0xFFFFFFFF
+-- @return	Byte-swapped value
+-- @see		htons
+-- @see		ntohl
+function _M.htonl(x)
+	if LITTLE_ENDIAN then
+		return bit.bor(
+			bit.lshift( _M.htons( bit.band( x, 0xFFFF ) ), 16 ),
+			_M.htons( bit.rshift( x, 16 ) )
+		)
+	else
+		return x
+	end
+end
+
 -- load/store 2/4/8 byte from/to bytes array
 function _M.get16(bytes)
 	return bit.band( bytes[0], 
@@ -18,14 +67,14 @@ function _M.set16(bytes, v)
 end
 
 function _M.get32(bytes)
-	return bit.band( bytes[0], 
+	return bit.bor( bytes[0], 
 		bit.lshift(bytes[1], 8),  
 		bit.lshift(bytes[2], 16), 
 		bit.lshift(bytes[3], 24)
 	)
 end
 function _M.sget32(str)
-	return bit.band( str:byte(1), 
+	return bit.bor( str:byte(1), 
 		bit.lshift(str:byte(2), 8),  
 		bit.lshift(str:byte(3), 16), 
 		bit.lshift(str:byte(4), 24)

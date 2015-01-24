@@ -60,11 +60,13 @@ end
 
 function _M.table_equals(t1, t2)
 	for k,v in pairs(t1) do
-		if not t2[k] then
+		if t2[k] == nil then
+			logger.warn('teq not have', k)
 			return false, k
 		elseif type(t2[k]) == "table" then
 			return _M.table_equals(t1[k], t2[k])		
 		elseif t1[k] ~= t2[k] then
+			logger.warn('teq not equal', k, t1[k], t2[k])
 			return false, k
 		end
 	end

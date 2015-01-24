@@ -231,46 +231,8 @@ exception.define('pipe', {
 	end,
 })
 
--- returns true if litten endian arch, otherwise big endian. 
--- now this framework does not support pdp endian.
-function _M.little_endian()
-	return LITTLE_ENDIAN
-end
-
 --> htons/htonl/ntohs/ntohl 
 --- borrow from http://svn.fonosfera.org/fon-ng/trunk/luci/libs/core/luasrc/ip.lua
-
---- Convert given short value to network byte order on little endian hosts
--- @param x	Unsigned integer value between 0x0000 and 0xFFFF
--- @return	Byte-swapped value
--- @see		htonl
--- @see		ntohs
-function _M.htons(x)
-	if LITTLE_ENDIAN then
-		return bit.bor(
-			bit.rshift( x, 8 ),
-			bit.band( bit.lshift( x, 8 ), 0xFF00 )
-		)
-	else
-		return x
-	end
-end
-
---- Convert given long value to network byte order on little endian hosts
--- @param x	Unsigned integer value between 0x00000000 and 0xFFFFFFFF
--- @return	Byte-swapped value
--- @see		htons
--- @see		ntohl
-function _M.htonl(x)
-	if LITTLE_ENDIAN then
-		return bit.bor(
-			bit.lshift( _M.htons( bit.band( x, 0xFFFF ) ), 16 ),
-			_M.htons( bit.rshift( x, 16 ) )
-		)
-	else
-		return x
-	end
-end
 
 --- Convert given short value to host byte order on little endian hosts
 -- @class	function

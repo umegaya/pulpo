@@ -2,6 +2,7 @@ local ffi = require 'ffiex.init'
 
 local _M = {}
 local exceptions = {}
+local cert = {}
 
 local default_methods = {
 	new = function (decl, bt, ...)
@@ -58,6 +59,7 @@ local function def_exception(name, decl)
 		rawset(tmp2, k, dv or v)
 	end
 	tmp2.__index = tmp1
+	tmp2.__cert__ = cert
 	return tmp2
 end
 
@@ -101,6 +103,11 @@ function _M.raise(name, ...)
 	else
 		new_exception(name, 3, ...):raise()
 	end
+end
+
+function _M.akin(t)
+	local mt = getmetatable(t)
+	return mt and (mt.__cert__ == cert)
 end
 
 _M.define('not_found')
