@@ -66,6 +66,7 @@ function _M.strdup(str)
 end
 
 function _M.realloc(p, sz)
+	--logger.info('reallo from', debug.traceback())
 	local p = ffi.gc(C.realloc(p, sz), nil)
 	return p ~= ffi.NULL and p or nil
 end

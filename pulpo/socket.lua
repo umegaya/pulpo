@@ -4,13 +4,15 @@ local _M = require_on_boot 'pulpo.defer.socket_c'
 local ffi = require 'ffiex.init'
 ffi.cdef [[
 union luact_endian_checker {
-	uint16_t s;
-	uint8_t bytes[2];
+	uint32_t u;
+	uint8_t bytes[4];
 };
 ]]
 local c = ffi.new('union luact_endian_checker')
-c.s = 1
-local LITTLE_ENDIAN = (c.bytes[1] == 1)
+c.u = 0x00000001
+
+local LITTLE_ENDIAN = (c.bytes[0] == 0x01)
+logger.info('endian', LITTLE_ENDIAN, ('%02x,%02x,%02x,%02x'):format(c.bytes[0], c.bytes[1], c.bytes[2], c.bytes[3]))
 
 -- returns true if litten endian arch, otherwise big endian. 
 -- now this framework does not support pdp endian.
@@ -49,6 +51,27 @@ function _M.htonl(x)
 		return x
 	end
 end
+
+--> htons/htonl/ntohs/ntohl 
+--- borrow from http://svn.fonosfera.org/fon-ng/trunk/luci/libs/core/luasrc/ip.lua
+
+--- Convert given short value to host byte order on little endian hosts
+-- @class	function
+-- @name	ntohs
+-- @param x	Unsigned integer value between 0x0000 and 0xFFFF
+-- @return	Byte-swapped value
+-- @see		htonl
+-- @see		ntohs
+_M.ntohs = _M.htons
+
+--- Convert given short value to host byte order on little endian hosts
+-- @class	function
+-- @name	ntohl
+-- @param x	Unsigned integer value between 0x00000000 and 0xFFFFFFFF
+-- @return	Byte-swapped value
+-- @see		htons
+-- @see		ntohl
+_M.ntohl = _M.htonl
 
 -- load/store 2/4/8 byte from/to bytes array
 function _M.get16(bytes)

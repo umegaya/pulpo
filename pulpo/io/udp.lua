@@ -69,11 +69,6 @@ local function udp_connect(io)
 	return true
 end
 
-local function udp_server_socket(p, fd, ctx)
-	return p:newio(fd, HANDLER_TYPE_TCP, ctx)	
-end
-
-
 --> handlers
 local function udp_read(io, ptr, len, addr)
 ::retry::
