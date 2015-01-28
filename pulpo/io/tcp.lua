@@ -171,6 +171,7 @@ local function tcp_accept(io)
 		-- so other coroutine which call tcp_accept never intercept this ctx. 
 		-- we can reuse ctx pointer for next accept call.
 		ctx = memory.alloc_typed('pulpo_tcp_context_t')
+		ctx.addr:init()
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
 	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)

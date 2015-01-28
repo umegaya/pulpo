@@ -36,6 +36,7 @@ local event = require 'pulpo.event'
 local util = require 'pulpo.util'
 local gen = require 'pulpo.generics'
 local socket = require 'pulpo.socket'
+local exception = require 'pulpo.exception'
 
 _M.poller = poller
 _M.tentacle = tentacle
@@ -97,6 +98,7 @@ local function init_cdef()
 		typedef struct pulpo_opaque {
 			unsigned short id;
 			unsigned char noloop, debug;
+			unsigned char finished, padd[3];
 			char *group;
 			char *proc, *init_proc;
 			char *init_params;
@@ -147,13 +149,17 @@ local function create_thread(exec, group, arg, opts)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex.init'
 		local pulpo = require 'pulpo.init'
+		local thread = require 'pulpo.thread'
 		local util = require 'pulpo.util'
 		local memory = require 'pulpo.memory'
 		local opaque = pulpo.init_worker()
-		local proc = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
+		local proc, err = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
+		if not proc then
+			exception.raise('fatal', 'loading main proc fails', err)
+		end
 		if opaque.init_proc ~= ffi.NULL then
 			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
-			init_proc(opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
+			local ok, r = pcall(init_proc, opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
 			memory.free(opaque.init_proc)
 			if opaque.init_params ~= ffi.NULL then
 				memory.free(opaque.init_params)
@@ -161,9 +167,9 @@ local function create_thread(exec, group, arg, opts)
 		end
 		memory.free(opaque.proc)
 		if opaque.noloop == 0 then
-			pulpo.tentacle(proc, arg)
+			pulpo.main(proc, arg, opaque)
 			pulpo.evloop:loop()
-			pulpo.thread.fin_worker()
+			thread.fin_worker()
 		else
 			pcall(proc, arg)
 		end
@@ -185,6 +191,24 @@ local function wrap_module(mod, p)
 			return v
 		end
 	})
+end
+
+local function err_handler(e)
+	--logger.report('err', tostring(e))
+	exception.raise('fatal', 'error on main proc', e)
+end
+
+function _M.main(proc, arg, opq)
+	local pulpo = require 'pulpo.init'
+	pulpo.tentacle(function (fn, a, fzr)
+		local ok, r = xpcall(fn, err_handler, a)
+		if not r then
+			opq.finished = 1
+			if _M.is_all_thread_finished() then
+				_M.stop()
+			end
+		end
+	end, proc, arg, finalizer)
 end
 
 function _M.wrap_poller(p)
@@ -289,10 +313,15 @@ function _M.run(opts, executable)
 		create_thread(executable, opts.group, opts.arg, opts)
 	end
 	if opts.exclusive then
+		local proc, err = util.create_proc(executable)
+		if not proc then
+			exception.raise('fatal', 'loading main proc fails', err)
+		end
 		if opts.noloop then
-			pcall(util.create_proc(executable), opts.arg)
+			pcall(proc, opts.arg)
 		else
-			tentacle(util.create_proc(executable), opts.arg)
+			local opq = thread.opaque(thread.me, "pulpo_opaque_t*")
+			_M.main(proc, opts.arg, opq)
 			_M.evloop:loop()
 			thread.finalize()
 		end
@@ -310,6 +339,7 @@ function _M.find_thread(group_or_id_or_filter)
 		end
 		for i=0,size-1,1 do
 			local th = list[i]
+			local opq = thread.opaque(th, "pulpo_opaque_t*")
 			if type(group_or_id_or_filter) == "string" then -- group
 				if ffi.string(opq.group) == group_or_id_or_filter then
 					table.insert(matches, th)
@@ -325,6 +355,23 @@ function _M.find_thread(group_or_id_or_filter)
 			end
 		end
 		return matches
+	end)
+end
+
+function _M.is_all_thread_finished()
+	return thread.fetch(function (list, size)
+		local finished = 0
+		for i=0,size-1,1 do
+			local th = list[i]
+			local opq = thread.opaque(th, "pulpo_opaque_t*")
+			if opq.finished ~= 0 then 
+				-- logger.info('is_all_thread_finished', i+1, 'finished')
+				finished = finished + 1
+			else
+				-- logger.info('is_all_thread_finished', i+1, 'not finished')
+			end
+		end
+		return finished >= size
 	end)
 end
 

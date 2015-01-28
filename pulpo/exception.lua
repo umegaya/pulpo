@@ -68,8 +68,12 @@ local function new_exception(name, bt, ...)
 	if not decl then
 		_M.raise("not_found", "exception", name)
 	end
-	return decl.__index.new(decl, 
-		type(bt) == 'number' and debug.traceback("", bt) or ("\n"..bt), ...)
+	if type(bt) == 'number' then
+		bt = debug.traceback("", bt)
+	elseif type(bt) == 'string' and (#bt > 0) then
+		bt = ("\n"..bt)
+	end
+	return decl.__index.new(decl, bt, ...)
 end
 function _M.new(name, ...)
 	return new_exception(name, 2, ...)

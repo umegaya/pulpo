@@ -82,6 +82,7 @@ function _M.yield(obj)
 	return coroutine.yield(obj)
 end
 function _M.trace(co)
+	assert(_M.TRACE)
 	logger.report('last yield', co.ybt)
 	logger.report('last resume', co.rbt)
 end	

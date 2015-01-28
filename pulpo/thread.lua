@@ -437,6 +437,9 @@ function _M.at_exit()
 	end
 	-- print('at_exit end')
 end
+function _M.count()
+	return _threads.used
+end
 function _M.join(thread)
 	local rv = ffi.new("void*[1]")
 	PT.pthread_join(thread.pt, rv)

@@ -276,6 +276,7 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 end
 local function ssl_accept(io)
 	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
+	ctx.addr:init()
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
 ::retry::
 	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)

@@ -131,10 +131,7 @@ function _M.decode_proc(code)
 		if f then
 			executable = f
 		else
-			executable = function ()
-				local ok, r = pcall(require, code)
-				--if not ok then error(r) end
-			end
+			return nil, err
 		end
 	end
 	return executable
