@@ -81,6 +81,14 @@ function _M.yield(obj)
 	end
 	return coroutine.yield(obj)
 end
+function _M.set_context(ctx, co)
+	co = co or _M.running()
+	co[4] = ctx
+end
+function _M.get_context(co)
+	co = co or _M.running()
+	return co[4]
+end
 function _M.trace(co)
 	assert(_M.TRACE)
 	logger.report('last yield', co.ybt)
