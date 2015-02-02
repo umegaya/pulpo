@@ -10,11 +10,11 @@ local channels = {}
 function _M.log(type, ...)
 	local s = settings[type]
 	if s and (not s.mute) and _M.loglevel <= s.level then
-		local args = {...}
 		if s.with_bt then
-			table.insert(args, debug.traceback())			
+			s:sender(..., debug.traceback())
+		else
+			s:sender(...)
 		end
-		s:sender(unpack(args))
 	end
 end
 

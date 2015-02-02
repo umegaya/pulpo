@@ -6,14 +6,14 @@ local cert = {}
 
 local default_methods = {
 	new = function (decl, bt, ...)
-		return setmetatable({args={...}, bt = bt}, decl)
+		return setmetatable({args={...}, len=select('#', ...), bt = bt}, decl)
 	end,
 	message = function (t)
 		if #t.args <= 0 then
 			return ""
 		else
 			local ret = tostring(t.args[1])
-			for i=2,#t.args,1 do
+			for i=2,t.len,1 do
 				ret = (ret .. "," .. tostring(t.args[i]))
 			end
 			return ret

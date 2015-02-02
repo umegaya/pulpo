@@ -2,6 +2,7 @@ local require_on_boot = (require 'pulpo.package').require
 local _M = require_on_boot 'pulpo.defer.socket_c'
 
 local ffi = require 'ffiex.init'
+local util = require 'pulpo.util'
 ffi.cdef [[
 union luact_endian_checker {
 	uint32_t u;
@@ -28,8 +29,8 @@ end
 function _M.htons(x)
 	if LITTLE_ENDIAN then
 		return bit.bor(
-			bit.rshift( x, 8 ),
-			bit.band( bit.lshift( x, 8 ), 0xFF00 )
+			bit.rshift( tonumber(x), 8 ),
+			bit.band( bit.lshift( tonumber(x), 8 ), 0xFF00 )
 		)
 	else
 		return x
@@ -43,14 +44,35 @@ end
 -- @see		ntohl
 function _M.htonl(x)
 	if LITTLE_ENDIAN then
-		return bit.bor(
-			bit.lshift( _M.htons( bit.band( x, 0xFFFF ) ), 16 ),
-			_M.htons( bit.rshift( x, 16 ) )
-		)
+		return _M.htons( bit.band( tonumber(x), 0xFFFF ) ) * 0x10000 + _M.htons( bit.rshift( tonumber(x), 16 ) ) 
 	else
 		return x
 	end
 end
+
+function _M.htonll(x, check)
+	if LITTLE_ENDIAN then
+		local r = ffi.new('uint64_t', (_M.htonl( x % 0x100000000 ) * 0x100000000)) + _M.htonl( x / 0x100000000 )
+		if not check then
+			if (tonumber(_M.ntohll(r, true)) ~= tonumber(x)) then
+				logger.error('htonll error')
+				print(ffi.typeof(x), ffi.typeof(r), util.sprintf('%llx', 32, _M.ntohll(r, true)), util.sprintf('%llx', 32, x), _M.ntohll(r, true) - x)
+			end
+		end
+		return r
+	else
+		return x
+	end
+end
+
+function _M.htonll_signed(x)
+	if LITTLE_ENDIAN then
+		return ffi.new('int64_t', (_M.htonl( x % 0x100000000 ) * 0x100000000)) + _M.htonl( x / 0x100000000 )
+	else
+		return x
+	end
+end
+
 
 --> htons/htonl/ntohs/ntohl 
 --- borrow from http://svn.fonosfera.org/fon-ng/trunk/luci/libs/core/luasrc/ip.lua
@@ -73,7 +95,9 @@ _M.ntohs = _M.htons
 -- @see		ntohl
 _M.ntohl = _M.htonl
 
--- load/store 2/4/8 byte from/to bytes array
+_M.ntohll = _M.htonll
+
+-- load/store 2/4/8 byte number/ctype from/to bytes array
 function _M.get16(bytes)
 	return bit.band( bytes[0], 
 		bit.lshift(bytes[1], 8) 

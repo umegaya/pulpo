@@ -2,6 +2,7 @@ local _M = {}
 local cache = {}
 local map = {}
 local logger = _G.logger or print
+-- _M.TRACE = true
 
 -- local functions
 local function err_handler(e)
