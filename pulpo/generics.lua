@@ -145,7 +145,7 @@ function _M.erastic_map(type, name)
 				for i=0,t.used-1,1 do
 					e = t.list[i]
 					if ffi.string(e.name) == name then
-						return e.data
+						return e.data, true
 					end
 				end
 				if _G.type(init) ~= "function" then
