@@ -112,9 +112,6 @@ end
 
 local function init_shared_memory()
 	ffi.cdef[[
-		typedef struct pulpo_clock_origin {
-			double v;
-		} pulpo_clock_origin_t;
 		typedef struct pulpo_thread_idseed {
 			int cnt;
 		} pulpo_thread_idseed_t;
@@ -125,24 +122,33 @@ local function init_shared_memory()
 		PT.pthread_mutex_init(mutex, nil)
 		return 'pthread_mutex_t', mutex
 	end)
+end
+local function config_logger(opts)
+	ffi.cdef[[
+		typedef struct pulpo_logger_data {
+			bool verbose;
+		} pulpo_logger_data_t;
+	]]
 	-- make default logger thread safe
-	local ret = _M.shared_memory("__clock_origin__", function ()
-		local o = memory.alloc_typed('pulpo_clock_origin_t')
-		o.v = util.clock()
-		return 'pulpo_clock_origin_t', o
+	local ret = _M.shared_memory("__logger_conf__", function ()
+		local o = memory.alloc_typed('pulpo_logger_data_t')
+		o.verbose = opts.verbose and opts.verbose~="false" or false
+		return 'pulpo_logger_data_t', o
 	end)
-	_M.clock_origin = ret.v
-	local origin = ret.v
+	_M.verbose = ret.verbose
 	log.redirect("default", function (setting, ...)
 		PT.pthread_mutex_lock(_M.logger_mutex)
 		term[setting.color]()
-		io.write(("%s "):format(util.clock() - origin))
+		io.write(("%s "):format(os.clock()))
 		io.write(logpfx)
 		print(...)
 		term.resetcolor()
 		io.stdout:flush()
 		PT.pthread_mutex_unlock(_M.logger_mutex)
 	end)
+	if _M.verbose then
+		log.loglevel = 0
+	end
 end
 
 local function create_thread(exec, group, arg, opts)
@@ -271,6 +277,7 @@ function _M.initialize(opts)
 		thread.initialize(opts)
 		poller.initialize(opts)
 		init_shared_memory()
+		config_logger(opts)
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		init_opaque(opts)
@@ -291,6 +298,7 @@ function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
 		init_shared_memory()
+		config_logger()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		_M.initialized = true

@@ -430,14 +430,14 @@ function _M.setsockopt(fd, opts)
 		end
 	end
 	if opts.wblen.data > 0 then
-		logger.info(fd, "set wblen to", opts.wblen.data);
+		logger.debug(fd, "set wblen to", opts.wblen.data);
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (sndbuf) errno=", errno);
 			return -4
 		end
 	end
 	if opts.rblen.data > 0 then
-		logger.info(fd, "set rblen to", opts.rblen.data);
+		logger.debug(fd, "set rblen to", opts.rblen.data);
 		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (rcvbuf) errno=", errno);
 			return -5

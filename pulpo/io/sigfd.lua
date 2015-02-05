@@ -75,7 +75,7 @@ function _M.new(p, sig)
 		C.close(fd)
 		raise('poller', 'fail to add signal', fd, errno.errno())
 	end
-	logger.info('signal:', fd, sig)
+	logger.debug('signal:', fd, sig)
 	-- blocking default behavior of sigfd'ed signals
 	signal.maskctl('add', sig)
 	return p:newio(fd, HANDLER_TYPE_SIGNAL)
@@ -111,7 +111,7 @@ function _M.new(p, sig)
 	if socket.setsockopt(fd) < 0 then
 		raise('syscall', 'setsockopt', fd)
 	end
-	logger.info('signal:', fd, sig)
+	logger.debug('signal:', fd, sig)
 	-- blocking default behavior of sigfd'ed signals
 	signal.maskctl('add', sig)
 	return p:newio(fd, HANDLER_TYPE_SIGNAL)

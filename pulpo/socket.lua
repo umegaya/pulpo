@@ -13,7 +13,7 @@ local c = ffi.new('union luact_endian_checker')
 c.u = 0x00000001
 
 local LITTLE_ENDIAN = (c.bytes[0] == 0x01)
-logger.info('endian', LITTLE_ENDIAN, ('%02x,%02x,%02x,%02x'):format(c.bytes[0], c.bytes[1], c.bytes[2], c.bytes[3]))
+logger.debug('endian', LITTLE_ENDIAN, ('%02x,%02x,%02x,%02x'):format(c.bytes[0], c.bytes[1], c.bytes[2], c.bytes[3]))
 
 -- returns true if litten endian arch, otherwise big endian. 
 -- now this framework does not support pdp endian.

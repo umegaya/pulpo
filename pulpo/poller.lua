@@ -97,7 +97,7 @@ function _M.add_handler(name, reader, writer, gc, addr, writev, writef, err)
 	address_handlers[handler_id_seed] = addr or nop
 	error_handlers[handler_id_seed] = err or nop
 	handler_names[handler_id_seed] = name
-	logger.info('add_handler:', name, '=>', handler_id_seed)
+	logger.debug('add_handler:', name, '=>', handler_id_seed)
 	return handler_id_seed
 end
 

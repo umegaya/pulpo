@@ -13,12 +13,12 @@ local function proc(tm, fn, ...)
 	while true do
 		local n = tm:read()
 		if not n then
-			logger.info('timer:', tm:fd(), 'closed by event:', tp)
+			logger.debug('timer:', tm:fd(), 'closed by event:', tp)
 			goto exit
 		end
 		for i=1,tonumber(n),1 do
 			if fn(...) == false then
-				logger.info('timer:', io:fd(), 'closed by user')
+				logger.debug('timer:', io:fd(), 'closed by user')
 				goto exit
 			end
 		end
@@ -85,7 +85,7 @@ function taskgrp_index.close(t)
 end
 local task_element_mt = { __index = {} }
 function task_element_mt.__index:__cancel(co)
-	logger.info('task cancel', self[4][self[5]][3], co)
+	logger.debug('task cancel', self[4][self[5]][3], co)
 	assert(self[4][self[5]][3] == co)
 	table.remove(self[4], self[5])
 end

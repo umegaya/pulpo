@@ -52,7 +52,7 @@ function _M.maxfd(set_to, increase_only)
 		if increase_only then
 			local current = _M.getrlimit(RLIMIT_NOFILE)
 			if current >= set_to then
-				logger.info('not need to increase because current:'..tonumber(current).." vs "..set_to)
+				logger.debug('not need to increase because current:'..tonumber(current).." vs "..set_to)
 				return current
 			end
 		end

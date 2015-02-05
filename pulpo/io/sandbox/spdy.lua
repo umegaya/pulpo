@@ -64,7 +64,7 @@ function _M.listen(p, addr, opts)
 		C.close(fd)
 		error('fail to listen:listen:'..errno.errno())
 	end
-	logger.info('ssl listen:', fd, addr)
+	logger.debug('ssl listen:', fd, addr)
 	popts = memory.alloc_fill_typed('pulpo_ssl_option_t')
 	popts.ssl_manager = opts.ssl_manager or ssl_manager_server
 	popts.sockopts = opts.sockopts or nil

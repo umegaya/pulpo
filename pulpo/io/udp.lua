@@ -218,7 +218,7 @@ local function basic_listen(addr, opts)
 end
 function _M.listen(p, addr, opts)
 	local fd = basic_listen(addr, opts)
-	logger.info('udp', 'listen', fd, addr)
+	logger.debug('udp', 'listen', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_UDP, opts and socket.table2sockopt(opts, true) or nil)
 end
 
@@ -230,7 +230,7 @@ function _M.mcast_listen(p, addr, opts)
 		C.close(fd)
 		error(r)
 	end
-	logger.info('udp', 'mcast_listen', fd, addr)
+	logger.debug('udp', 'mcast_listen', fd, addr)
 	return p:newio(fd, HANDLER_TYPE_UDP, opts and socket.table2sockopt(opts, true) or nil)
 end
 
