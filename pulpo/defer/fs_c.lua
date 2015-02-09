@@ -232,7 +232,7 @@ function _M.mode(modestr)
 	return ffi.new('uint16_t', tonumber(modestr, "8"))
 end
 function _M.open(path, flags, mode)
-	local fd = C.open(path, flags, mode or O_RDWR)
+	local fd = C.open(path, flags, mode or _M.mode("0755"))
 	if fd <= 0 then
 		exception.raise('syscall', 'open', path)
 	end

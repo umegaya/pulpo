@@ -6,28 +6,16 @@ local PT = C
 --boot.DEBUG = true
 
 local _M = {}
-local log = require 'pulpo.logger'
+local log = (require 'pulpo.logger').initialize()
 local term = require 'pulpo.terminal'
 local logpfx = "[????] "
-local function init_logger()
-	log.initialize()
-	log.redirect("default", function (setting, ...)
-		term[setting.color]()
-		io.write(logpfx)
-		print(...)
-		term.resetcolor()
-		io.stdout:flush()
-	end)
-	_G.pulpo_assert = function (cond, msgobj)
-		if not cond then
-			log.fatal(msgobj)
-			_G.error(msgobj, 0)
-		end
-		return cond
+function _G.pulpo_assert(cond, msgobj)
+	if not cond then
+		log.fatal(msgobj)
+		_G.error(msgobj, 0)
 	end
+	return cond
 end
-init_logger()
-
 local thread = require 'pulpo.thread'
 local memory = require 'pulpo.memory'
 local poller = require 'pulpo.poller'
@@ -36,6 +24,7 @@ local event = require 'pulpo.event'
 local util = require 'pulpo.util'
 local gen = require 'pulpo.generics'
 local socket = require 'pulpo.socket'
+local fs = require 'pulpo.fs'
 local exception = require 'pulpo.exception'
 
 _M.poller = poller
@@ -127,25 +116,36 @@ local function config_logger(opts)
 	ffi.cdef[[
 		typedef struct pulpo_logger_data {
 			bool verbose;
+			char *logdir;
 		} pulpo_logger_data_t;
 	]]
 	-- make default logger thread safe
 	local ret = _M.shared_memory("__logger_conf__", function ()
 		local o = memory.alloc_typed('pulpo_logger_data_t')
 		o.verbose = opts.verbose and opts.verbose~="false" or false
+		o.logdir = opts.logdir and memory.strdup(opts.logdir) or ffi.NULL
 		return 'pulpo_logger_data_t', o
 	end)
 	_M.verbose = ret.verbose
-	log.redirect("default", function (setting, ...)
-		PT.pthread_mutex_lock(_M.logger_mutex)
-		term[setting.color]()
-		io.write(("%s "):format(os.clock()))
-		io.write(logpfx)
-		print(...)
-		term.resetcolor()
-		io.stdout:flush()
-		PT.pthread_mutex_unlock(_M.logger_mutex)
-	end)
+	if ret.logdir ~= ffi.NULL then
+		local logdir = ffi.string(ret.logdir).."/"..tostring(_M.thread_id)
+		log.redirect("default", fs.new_file_logger(logdir, {
+			prefix = logpfx,
+		}))
+		logger.info('logging start at', logdir)
+	else
+		log.redirect("default", function (setting, ...)
+			PT.pthread_mutex_lock(_M.logger_mutex)
+			term[setting.color]()
+			io.write(("%s "):format(os.clock()))
+			io.write(logpfx)
+			io.write(setting.tag)
+			print(...)
+			term.resetcolor()
+			io.stdout:flush()
+			PT.pthread_mutex_unlock(_M.logger_mutex)
+		end)
+	end
 	if _M.verbose then
 		log.loglevel = 0
 	end
