@@ -54,10 +54,14 @@ function file_logger_mt:current()
 	return self.dir.._M.PATH_SEPS.."current"
 end
 function file_logger_mt:default_formatter(setting, ...)
-	local str = self:timestamp()..(self.prefix and (" "..self.prefix) or "").." "..setting.tag
+	local str = self:timestamp()..(self.prefix and (" "..self.prefix) or "")..setting.tag
 	local args = {...}
 	for i=1,select('#', ...) do
-		str = str .. "\t" .. tostring(args[i])
+		if i > 1 then
+			str = str .. "\t" .. tostring(args[i])
+		else
+			str = str .. tostring(args[i])
+		end
 	end
 	str = str.."\n"
 	return str

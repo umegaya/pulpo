@@ -153,12 +153,12 @@ local function run_ptrace_process(...)
 		table.insert(tmp, tostring(arg))
 	end
     local cmd = (
-            '%s -e "(require \'pulpo.thread\').initialize({ cache_dir=\'%s\'});'..
-            '(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
-    ):format(
-    		arg[-1],
-            loader.cache_dir,
-            C.getpid(), table.concat(tmp, ',')
+		'%s -e "(require \'pulpo.thread\').initialize({ datadir=\'%s\'});'..
+		'(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
+	):format(
+		arg[-1],
+		loader.cache_dir,
+		C.getpid(), table.concat(tmp, ',')
     )
     logger.info('exec', cmd)
     local r = os.execute(cmd)

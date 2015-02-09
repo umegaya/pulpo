@@ -8,7 +8,7 @@ local NITER = 100
 local opts = {
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
 	maxconn = NCLIENTS, 
-	cache_dir = '/tmp/pulpo',
+	datadir = '/tmp/pulpo',
 	rmax = 1024 * 1024,
 }
 -- on travis CI's execute user does not have the write to carry out sysctl.

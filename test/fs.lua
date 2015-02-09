@@ -4,7 +4,7 @@ local socket = require 'pulpo.socket'
 local fs = require 'pulpo.fs'
 
 thread.initialize({
-	cache_dir = './tmp'
+	datadir = './tmp'
 })
 
 fs.rmdir("/tmp/test_pulpo_logger")
@@ -25,7 +25,7 @@ assert(#fl.files == 1, "log size of current will not reach to limit by this writ
 fl({ tag = "D:" }, "3"..("a"):rep(15))
 assert(#fl.files == 2, "log size of current will reach to limit, so backup should increase")
 local fname2 = fl.files[2]
-fl({ tag = "D:" }, "4"..("a"):rep(68))
+fl({ tag = "D:" }, "4"..("a"):rep(70))
 assert(#fl.files == 3, "even if single log record exceed log size limit, it will write to current")
 assert(#(io.open('/tmp/test_pulpo_logger/current'):read('*a')) == 101)
 fl({ tag = "D:" }, "5"..("a"):rep(15))

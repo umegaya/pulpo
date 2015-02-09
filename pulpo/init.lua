@@ -277,10 +277,11 @@ function _M.initialize(opts)
 		thread.initialize(opts)
 		poller.initialize(opts)
 		init_shared_memory()
-		config_logger(opts)
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
 		init_opaque(opts)
+		-- need to call after fix thread_id
+		config_logger(opts)
 		_M.initialized = true
 	end
 	return _M
@@ -298,13 +299,17 @@ function _M.init_worker(tls)
 	if not _M.initialized then
 		poller.init_worker()
 		init_shared_memory()
-		config_logger()
 		_M.evloop = _M.wrap_poller(poller.new())
 		init_cdef()
-		_M.initialized = true
 	end
 
-	return init_opaque()
+	local opq = init_opaque()
+	if not _M.initialized then
+		-- need to call after fix thread_id
+		config_logger()
+		_M.initialized = true
+	end
+	return opq
 end
 
 function _M.run(opts, executable)

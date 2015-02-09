@@ -9,7 +9,7 @@ local NCLIENTCORES = 2
 pulpo.initialize({
 	maxfd = (2 * NCLIENTS) + 100, -- client / server socket for NCLIENTS + misc
 	maxconn = NCLIENTS, 
-	cache_dir = '/tmp/pulpo'
+	datadir = '/tmp/pulpo'
 })
 
 require 'test.tools.config'

@@ -277,9 +277,9 @@ local function setup_shmem_args(shmemp)
 	end)
 end
 function _M.initialize(opts)
-	opts = opts or { cache_dir = "/tmp/pulpo" }
+	opts = opts or { datadir = "/tmp/pulpo" }
 	-- create common cache dir
-	util.mkdir(opts.cache_dir)
+	util.mkdir(opts.datadir)
 	-- initialize loader and its cache directory.
 	-- boot.init_modules(runlv.LOADER)
 	loader.initialize(opts, ffi.main_ffi_state)

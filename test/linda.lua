@@ -1,7 +1,7 @@
 -- avoid pulpo symbol inside thread proc, regard as upvalue
 local _pulpo = require 'pulpo.init'
 _pulpo.initialize({
-	cache_dir = '/tmp/pulpo',
+	datadir = '/tmp/pulpo',
 })
 
 logger.info('launch thread1')
