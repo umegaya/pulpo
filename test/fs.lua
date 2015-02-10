@@ -34,6 +34,19 @@ assert(fl.files[1] == fname2, "previous second oldest backup should be oldest")
 for i=1,3 do
 	assert(fl.files[i] ~= fname, "oldest log should not exist")
 end
+fl:finalize()
+
+local fl2 = fs.new_file_logger('/tmp/test_pulpo_logger', {
+	maxsize = 100, 
+	filenum = 3,
+})
+fl({ tag = "D:" }, "2"..("a"):rep(15))
+assert(fl.files[1] == fname2, "fl2 inherit previous current, but size is still not enough to rotate, fname2 should exist")
+fl({ tag = "D:" }, "3"..("a"):rep(15))
+for i=1,3 do
+	assert(fl.files[i] ~= fname2, "fl2 inherit previous current, so it expires earlier than usual, fname2 should not exist")
+end
+
 fs.rmdir("/tmp/test_pulpo_logger")
 
 return true

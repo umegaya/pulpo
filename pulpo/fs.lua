@@ -25,7 +25,6 @@ file_logger_mt.__index = file_logger_mt
 function file_logger_mt:initialize(dir, opts)
 	opts = opts or {}
 	self.dir = dir
-	self.wbytes = 0
 	self.size = opts.maxsize or 1000000
 	self.num = opts.filenum or 10
 	self.files = {}
@@ -34,14 +33,26 @@ function file_logger_mt:initialize(dir, opts)
 	_M.mkdir(dir)
 	self:open_current()
 end
-function file_logger_mt:open_current()
-	if self.fd and self.fd > 0 then
+function file_logger_mt:finalize()
+	if self.fd > 0 then
 		C.close(self.fd)
 	end
-	self.fd = _M.open(self:current(), bit.bor(_M.O_CREAT, _M.O_RDWR))
-	if self.fd < 0 then
+end
+function file_logger_mt:open_current()
+	if not self.fd then
+		local st = _M.stat(self:current())
+		self.wbytes = st and st[0].st_size or 0
+	else
+		if self.fd > 0 then
+			C.close(self.fd)
+		end
+		self.wbytes = 0
+	end
+	local fd = _M.open(self:current(), bit.bor(_M.O_CREAT, _M.O_APPEND, _M.O_RDWR))
+	if fd < 0 then
 		exception.raise('fatal', 'open file fails')
 	end
+	self.fd = fd
 end
 function file_logger_mt:timestamp()
 	local time, clock = util.clock_pair()
@@ -77,7 +88,6 @@ function file_logger_mt:rotate()
 		_M.rm(self.files[1])
 		table.remove(self.files, 1)
 	end
-	self.wbytes = 0
 	self:open_current()
 end
 function file_logger_mt:__call(setting, ...)
