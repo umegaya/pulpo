@@ -158,6 +158,7 @@ local function create_thread(exec, group, arg, opts)
 		local thread = require 'pulpo.thread'
 		local util = require 'pulpo.util'
 		local memory = require 'pulpo.memory'
+		local exception = require 'pulpo.exception'
 		local opaque = pulpo.init_worker()
 		local proc, err = util.decode_proc(ffi.string(opaque.proc, opaque.plen))
 		if not proc then
@@ -166,6 +167,9 @@ local function create_thread(exec, group, arg, opts)
 		if opaque.init_proc ~= ffi.NULL then
 			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
 			local ok, r = pcall(init_proc, opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
+			if not ok then
+				exception.raise('fatal', 'fail to initialize worker', r)
+			end
 			memory.free(opaque.init_proc)
 			if opaque.init_params ~= ffi.NULL then
 				memory.free(opaque.init_params)
