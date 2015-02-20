@@ -117,7 +117,7 @@ function lamport_gen_mt:now()
 	return self.clock
 end
 local clock_work = ffi.new('pulpo_lamport_clock_t')
-function lamport_gen_mt:issue_clock()
+function lamport_gen_mt:issue()
 	clock_work.value = self.clock.value
 	self.clock:next()
 	return clock_work
@@ -159,6 +159,7 @@ function causal_relation_checker_mt:bucket_clock_at(idx)
 	self.bucket_clock[idx]:copy_to(bucket_clock_work)
 	return bucket_clock_work
 end
+causal_relation_checker_mt.issue_clock = causal_relation_checker_mt.issue
 function causal_relation_checker_mt:fresh(lc, payload)
 	self:witness(lc)
 	if lc < self.oldest then
@@ -200,6 +201,11 @@ function _M.new(size, payload_gc)
 	local crc = causal_relation_checker_mt.alloc(size)
 	payload_map[crc] = { gc = payload_gc }
 	return crc
+end
+function _M.new_clock()
+	local p = memory.alloc_typed('pulpo_lamport_clock_generator_t')
+	p:init()
+	return p
 end
 function _M.destroy(crc)
 	local m = payload_map[crc]

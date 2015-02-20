@@ -179,6 +179,14 @@ end
 function addr_index:as_machine_id()
 	return _M.numeric_ipv4_addr_from_sockaddr(self.p)
 end
+function addr_index:port()
+	local af = self.p[0].sa_family
+	if af == AF_INET then
+		return _M.ntohs(tonumber(self.addr4.sin_port))
+	elseif af == AF_INET6 then
+		return _M.ntohs(tonumber(self.addr6.sin6_port))
+	end
+end
 function addr_index:set_by_machine_id(machine_id, port)
 	local sa = self.addr4
 	sa.sin_addr.s_addr = machine_id

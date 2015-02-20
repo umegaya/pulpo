@@ -116,7 +116,7 @@ end
 
 function _M.free(p)
 	if _M.DEBUG then
-		print('free:', p, debug.traceback())
+		logger.info('free:', p, debug.traceback())
 	end
 	C.free(p)
 end
