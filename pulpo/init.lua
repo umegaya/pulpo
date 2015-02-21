@@ -278,6 +278,7 @@ function _M.initialize(opts)
 	-- but already initialized by init_worker.
 	-- prevent re-initialize by this.
 	if not _M.initialized then
+		opts = opts or {}
 		thread.initialize(opts)
 		poller.initialize(opts)
 		init_shared_memory()
