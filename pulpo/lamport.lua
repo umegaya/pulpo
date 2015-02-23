@@ -13,41 +13,48 @@ end
 
 
 ffi.cdef [[
-typedef union pulpo_lamport_clock {
-	struct pulpo_lamport_clock_layout {
+//hibrid logical clock which can trace physical time relationship.
+//the concept is borrowed from cockroach db.
+typedef union pulpo_hlc {
+	struct pulpo_hlc_layout {
 		uint32_t walltime_lo;
 		uint32_t walltime_hi:10, logical_clock:22;
 	} layout;
 	uint64_t value;
-} pulpo_lamport_clock_t;
-typedef struct pulpo_lamport_clock_generator {
-	pulpo_lamport_clock_t clock;
-} pulpo_lamport_clock_generator_t;
-typedef struct pulpo_lamport_causal_relation_checker {
+} pulpo_hlc_t;
+
+typedef struct pulpo_hlc_generator {
+	pulpo_hlc_t clock;
+} pulpo_hlc_generator_t;
+
+//purely logical lamport clock
+typedef uint64_t pulpo_lamport_clock_t;
+
+typedef struct pulpo_lamport_causality_checker {
 	pulpo_lamport_clock_t clock;
 	pulpo_lamport_clock_t oldest;
 	uint32_t bucket_size;
 	pulpo_lamport_clock_t bucket_clock[0];
-} pulpo_lamport_causal_relation_checker_t;
+} pulpo_lamport_causality_checker_t;
 ]]
 
--- lamport clock
-local lamport_mt = {}
-lamport_mt.__index = lamport_mt
-function lamport_mt:init()
+-- hibrid logical clock
+local hlc_mt = {}
+hlc_mt.__index = hlc_mt
+function hlc_mt:init()
 	self.value = 0
 end
-function lamport_mt:debug_init(msec_walltime, logical_clock)
+function hlc_mt:debug_init(msec_walltime, logical_clock)
 	self:set_walltime(msec_walltime)
 	self.layout.logical_clock = logical_clock
 end
-function lamport_mt:initialized()
+function hlc_mt:initialized()
 	return self.value ~= 0
 end
-function lamport_mt:logical_clock()
+function hlc_mt:logical_clock()
 	return self.layout.logical_clock
 end
-function lamport_mt:witness(lc, offset)
+function hlc_mt:witness(lc, offset)
 	local ts = msec_timestamp()
 	if (lc:walltime() < ts) and (self:walltime() < ts) then
 		self:set_walltime(ts)
@@ -71,7 +78,7 @@ function lamport_mt:witness(lc, offset)
 		self.layout.logical_clock = self.layout.logical_clock + 1
 	end
 end
-function lamport_mt:next()
+function hlc_mt:next()
 	local ts = msec_timestamp()
 	if self:walltime() >= ts then
 		self.layout.logical_clock = self.layout.logical_clock + 1
@@ -79,24 +86,25 @@ function lamport_mt:next()
 		self:set_walltime(ts)
 		self.layout.logical_clock = 0
 	end
+	return self
 end
-function lamport_mt:set_walltime(wt)
+function hlc_mt:set_walltime(wt)
 	self.layout.walltime_hi = wt / 0x100000000
 	self.layout.walltime_lo = bit.band(wt, 0xFFFFFFFF)
 end
-function lamport_mt:walltime()
+function hlc_mt:walltime()
 	return (tonumber(self.layout.walltime_hi) * 0x100000000) + self.layout.walltime_lo
 end
-function lamport_mt:copy_to(to)
+function hlc_mt:copy_to(to)
 	to.value = self.value
 end
-function lamport_mt:__mod(n)
+function hlc_mt:__mod(n)
 	return (self.layout.logical_clock + self.layout.walltime_lo) % n
 end
-function lamport_mt:__eq(lc)
+function hlc_mt:__eq(lc)
 	return lc.value == self.value
 end
-function lamport_mt:__le(lc)
+function hlc_mt:__le(lc)
 	if self:walltime() < lc:walltime() then
 		return true
 	elseif self:walltime() > lc:walltime() then
@@ -105,7 +113,7 @@ function lamport_mt:__le(lc)
 		return self.layout.logical_clock <= lc.layout.logical_clock
 	end
 end
-function lamport_mt:__lt(lc)
+function hlc_mt:__lt(lc)
 	if self:walltime() < lc:walltime() then
 		return true
 	elseif self:walltime() > lc:walltime() then
@@ -114,76 +122,78 @@ function lamport_mt:__lt(lc)
 		return self.layout.logical_clock < lc.layout.logical_clock
 	end
 end
-function lamport_mt:__tostring()
+function hlc_mt:__tostring()
 	return self:walltime()..":"..tonumber(self.layout.logical_clock)
 end
-ffi.metatype('pulpo_lamport_clock_t', lamport_mt)
+ffi.metatype('pulpo_hlc_t', hlc_mt)
 
-
-
--- lamport clock generator
-local lamport_gen_mt = {}
-lamport_gen_mt.__index = lamport_gen_mt
-function lamport_gen_mt:init()
+-- hibrid logical clock generator
+local hlc_gen_mt = {}
+hlc_gen_mt.__index = hlc_gen_mt
+function hlc_gen_mt:init()
 	self.clock:init()
 end
-function lamport_gen_mt:witness(lc)
+function hlc_gen_mt:witness(lc)
 	self.clock:witness(lc)
 end
-function lamport_gen_mt:now()
+function hlc_gen_mt:now()
 	return self.clock
 end
-local clock_work = ffi.new('pulpo_lamport_clock_t')
-function lamport_gen_mt:issue()
-	clock_work.value = self.clock.value
-	self.clock:next()
-	return clock_work
+function hlc_gen_mt:issue()
+	return self.clock:next()
 end
-ffi.metatype('pulpo_lamport_clock_generator_t', lamport_gen_mt)
+ffi.metatype('pulpo_hlc_generator_t', hlc_gen_mt)
 
 
 
 -- causal relation checker
 -- which checks given payload with lamport clock is 'fresh' or not 
-local causal_relation_checker_mt = util.copy_table(lamport_gen_mt)
-causal_relation_checker_mt.__index = causal_relation_checker_mt
-function causal_relation_checker_mt.alloc(size)
-	local p = ffi.cast('pulpo_lamport_causal_relation_checker_t*', memory.alloc_fill(
-		ffi.sizeof('pulpo_lamport_causal_relation_checker_t') + ffi.sizeof('pulpo_lamport_clock_t') * size
+local causality_checker_mt = {}
+causality_checker_mt.__index = causality_checker_mt
+function causality_checker_mt.alloc(size)
+	local p = ffi.cast('pulpo_lamport_causality_checker_t*', memory.alloc_fill(
+		ffi.sizeof('pulpo_lamport_causality_checker_t') + ffi.sizeof('pulpo_lamport_clock_t') * size
 	))
 	p:init(size)
 	return p
 end
-function causal_relation_checker_mt:init(size)
-	self.clock:init()
-	self.oldest:init()
+function causality_checker_mt:init(size)
+	self.clock = 0
+	self.oldest = 0
 	self.bucket_size = size
 end
-local oldest_work = memory.alloc_typed('pulpo_lamport_clock_t')
-function causal_relation_checker_mt:oldest_clock()
-	oldest_work:init()
+function causality_checker_mt:witness(lc)
+	if self.clock < lc then
+		self.clock = lc + 1
+	end
+end
+function causality_checker_mt:now()
+	return self.clock
+end
+local clock_work = ffi.new('uint64_t')
+function causality_checker_mt:issue()
+	clock_work = self.clock
+	self.clock = self.clock + 1
+	return tonumber(clock_work) 
+end
+function causality_checker_mt:oldest_clock()
+	local oldest = 0
 	for i=0,self.bucket_size-1 do
 		local c = self.bucket_clock[i]
-		-- print('oldest clock', c, oldest_work, i)
-		if c:initialized() and ((not oldest_work:initialized()) or (c < oldest_work)) then
-			c:copy_to(oldest_work)
+		if (c > 0) and ((oldest == 0) or (c < oldest)) then
+			oldest = c
 		end
 	end
-	return oldest_work[0]
+	return oldest
 end
-local bucket_clock_work = memory.alloc_typed('pulpo_lamport_clock_t')
-function causal_relation_checker_mt:bucket_clock_at(idx)
-	self.bucket_clock[idx]:copy_to(bucket_clock_work)
-	return bucket_clock_work
-end
-causal_relation_checker_mt.issue_clock = causal_relation_checker_mt.issue
-function causal_relation_checker_mt:fresh(lc, payload)
+causality_checker_mt.issue_clock = causality_checker_mt.issue
+function causality_checker_mt:fresh(lc, payload)
 	self:witness(lc)
 	if lc < self.oldest then
 		return false
 	else
 		local idx = tonumber(lc % self.bucket_size)
-		local prev_clock = self:bucket_clock_at(idx)
+		local prev_clock = self.bucket_clock[idx]
 		local m = payload_map[self]
 		-- print(idx, prev_clock, self.oldest, lc)
 		if prev_clock == lc then
@@ -209,29 +219,29 @@ function causal_relation_checker_mt:fresh(lc, payload)
 	end
 	return true
 end
-ffi.metatype('pulpo_lamport_causal_relation_checker_t', causal_relation_checker_mt)
+ffi.metatype('pulpo_lamport_causality_checker_t', causality_checker_mt)
 
 
 
 -- module functions
 function _M.new(size, payload_gc)
-	local crc = causal_relation_checker_mt.alloc(size)
-	payload_map[crc] = { gc = payload_gc }
-	return crc
+	local cc = causality_checker_mt.alloc(size)
+	payload_map[cc] = { gc = payload_gc }
+	return cc
 end
-function _M.new_clock()
-	local p = memory.alloc_typed('pulpo_lamport_clock_generator_t')
+function _M.new_hlc()
+	local p = memory.alloc_typed('pulpo_hlc_generator_t')
 	p:init()
 	return p
 end
-function _M.destroy(crc)
-	local m = payload_map[crc]
-	payload_map[crc] = nil
+function _M.destroy(cc)
+	local m = payload_map[cc]
+	payload_map[cc] = nil
 	if m.gc then m:gc() end
-	memory.free(crc)
+	memory.free(cc)
 end
-function _M.debug_make_clock(clock, msec)
-	local p = ffi.new('pulpo_lamport_clock_t')
+function _M.debug_make_hlc(clock, msec)
+	local p = ffi.new('pulpo_hlc_t')
 	p:debug_init(msec or msec_timestamp(), clock)
 	return p
 end

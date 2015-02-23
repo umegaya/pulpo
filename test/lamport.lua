@@ -11,9 +11,7 @@ end
 
 local lamport = require 'pulpo.lamport'
 local function lc(logical_clock)
-	local p = ffi.new('pulpo_lamport_clock_t')
-	p:debug_init(fixed_msec, logical_clock)
-	return p
+	return ffi.new('pulpo_lamport_clock_t', logical_clock)
 end
 
 local l = lamport.new(16)
