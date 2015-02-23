@@ -47,19 +47,38 @@ end
 function lamport_mt:logical_clock()
 	return self.layout.logical_clock
 end
-function lamport_mt:next(buf)
-	buf = buf or self
+function lamport_mt:witness(lc, offset)
 	local ts = msec_timestamp()
-	if ts > self:walltime() then
-		buf:set_walltime(ts)
-		buf.layout.logical_clock = 0
-	else
-		if buf ~= self then
-			buf:set_walltime(self:walltime())
-		end
-		buf.layout.logical_clock = self.layout.logical_clock + 1
+	if (lc:walltime() < ts) and (self:walltime() < ts) then
+		self:set_walltime(ts)
+		self.layout.logical_clock = 0
+		return
 	end
-	return buf
+
+	if lc > self then
+		if offset and (lc:walltime() - ts > offset) then
+			logger.error('invalid clock', lc, lc:walltime(), ts)
+			return
+		end
+		self:set_walltime(lc:walltime())
+		self.layout.logical_clock = lc.layout.logical_clock + 1
+	elseif lc < self then
+		self.layout.logical_clock = self.layout.logical_clock + 1
+	else
+		if lc.layout.logical_clock > self.layout.logical_clock then
+			self.layout.logical_clock = lc.layout.logical_clock
+		end
+		self.layout.logical_clock = self.layout.logical_clock + 1
+	end
+end
+function lamport_mt:next()
+	local ts = msec_timestamp()
+	if self:walltime() >= ts then
+		self.layout.logical_clock = self.layout.logical_clock + 1
+	else
+		self:set_walltime(ts)
+		self.layout.logical_clock = 0
+	end
 end
 function lamport_mt:set_walltime(wt)
 	self.layout.walltime_hi = wt / 0x100000000
@@ -109,9 +128,7 @@ function lamport_gen_mt:init()
 	self.clock:init()
 end
 function lamport_gen_mt:witness(lc)
-	if self.clock < lc then
-		lc:next(self.clock)
-	end
+	self.clock:witness(lc)
 end
 function lamport_gen_mt:now()
 	return self.clock

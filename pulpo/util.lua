@@ -85,7 +85,7 @@ function _M.random_k_from(t, k, filter)
 	else
 		local indices = {}
 		local last = #t
-		local safe_count = 0
+		local safe_count = math.max(50, 3 * #t)
 		while #indices < k do
 			local idx = math.random(1, #t)
 			local good = true
@@ -102,8 +102,17 @@ function _M.random_k_from(t, k, filter)
 			if good then
 				table.insert(indices, idx)
 			end
-			safe_count = safe_count + 1
-			if safe_count > (3 * #t) then
+			safe_count = safe_count - 1
+			if safe_count <= 0 then
+				if _M.RANDOM_K_DEBUG then
+					logger.info('safe count over', 3 * #t)
+					for i=1,#indices do
+						logger.info('indices', i, indices[i])
+					end
+					for i=1,#t do
+						logger.info('available', i, filter(t[i]))
+					end
+				end
 				break
 			end
 		end

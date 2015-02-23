@@ -2,7 +2,9 @@ local ffi = require 'ffiex.init'
 if ffi.os == "OSX" then
 	return true
 end
-local pulpo = (require 'pulpo.init').initialize()
+local pulpo = (require 'pulpo.init').initialize({
+	datadir = '/tmp/pulpo',
+})
 local signal = require 'pulpo.signal'
 
 pulpo.tentacle(function ()
