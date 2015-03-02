@@ -110,8 +110,31 @@ function _M.cmp(dst, src, sz)
 	return C.memcmp(dst, src, sz) == 0
 end
 
+-- following 2 returns
+-- >0 : dst is greater
+-- <0 : src is greater
+-- =0 : equals
 function _M.rawcmp(dst, src, sz)
 	return C.memcmp(dst, src, sz)
+end
+
+function _M.rawcmp_ex(dst, dsz, src, ssz)
+	-- print('rawcmp_ex', dsz, ssz)
+	if dsz <= 0 then -- dst is min key
+		-- unless src is min key, dst is smaller
+		return ssz <= 0 and 0 or -1
+	elseif ssz <= 0 then -- src is min key
+		-- unless dst is min key, src is smaller
+		return dst <= 0 and 0 or 1
+	elseif dsz < ssz then
+		local r = _M.rawcmp(dst, src, dsz)
+		return r > 0 and 1 or -1 
+	elseif dsz > ssz then
+		local r = _M.rawcmp(dst, src, ssz)
+		return r >= 0 and 1 or -1
+	else
+		return _M.rawcmp(dst, src, ssz)
+	end
 end
 
 function _M.free(p)

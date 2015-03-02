@@ -21,6 +21,7 @@ typedef union pulpo_hlc {
 		uint32_t walltime_hi:10, logical_clock:22;
 	} layout;
 	uint64_t value;
+	uint8_t p[0];
 } pulpo_hlc_t;
 
 typedef struct pulpo_hlc_generator {
@@ -37,6 +38,8 @@ typedef struct pulpo_lamport_causality_checker {
 	pulpo_lamport_clock_t bucket_clock[0];
 } pulpo_lamport_causality_checker_t;
 ]]
+
+_M.MAX_HLC_WALLTIME = (bit.lshift(1, 10) * 0x100000000) - 1
 
 -- hibrid logical clock
 local hlc_mt = {}
@@ -98,6 +101,12 @@ end
 function hlc_mt:copy_to(to)
 	to.value = self.value
 end
+function hlc_mt:add_walltime(sec)
+	local wt = self:walltime()
+	wt = wt + math.floor(sec * 1000)
+	self:set_walltime(wt)
+	return self
+end
 function hlc_mt:__mod(n)
 	return (self.layout.logical_clock + self.layout.walltime_lo) % n
 end
@@ -124,6 +133,14 @@ function hlc_mt:__lt(lc)
 end
 function hlc_mt:__tostring()
 	return self:walltime()..":"..tonumber(self.layout.logical_clock)
+end
+
+function hlc_mt:as_byte_string()
+	return ffi.string(self.p, ffi.sizeof('pulpo_hlc_t'))
+end
+function hlc_mt:from_byte_string(str)
+	ffi.copy(self.p, str, ffi.sizeof('pulpo_hlc_t'))
+	return self
 end
 ffi.metatype('pulpo_hlc_t', hlc_mt)
 
@@ -245,5 +262,6 @@ function _M.debug_make_hlc(clock, msec)
 	p:debug_init(msec or msec_timestamp(), clock)
 	return p
 end
+_M.ZERO_HLC = _M.debug_make_hlc(0, 0)
 
 return _M

@@ -199,4 +199,68 @@ for i=0,#data do
 end
 ]]--
 
+-- encoding binary with the way which can be put terminate flag in its data and keeping lexicographicity
+-- (that is, if a <= b lexicographically, enc(a) <= enc(b) lexicographicity is true)
+function _M.encode_binary_length(len)
+	return (math.ceil(len / 7) * 8)
+end
+function _M.encode_binary(bin, len, out, olimit)
+	-- encode with every 7 byte chunk
+	local src = ffi.cast('const char *', bin)
+	local ret = out
+	local idx = 0
+	local olen = 0
+	if olimit < _M.encode_binary_length(len) then
+		assert(false, "output buffer too short")
+	end
+	-- print(idx, len)
+	while idx < len do
+		local tmp = 0
+		for i=0,6 do
+			if (idx + i) < len then
+				tmp = tmp + (bit.band(0x80, src[idx + i]) ~= 0 and bit.lshift(1, 6 - i) or 0)
+			end
+		end
+		-- chunk header of payload
+		-- print('ret = ', ret)
+		ret[olen] = tmp; olen = olen + 1
+		for i=0,6 do
+			local payload = bit.band(0x7f, src[idx + i])
+			if (idx + i) < (len - 1) then
+				ret[olen] = payload + 0x80; olen = olen + 1
+			else
+				-- last byte. does not set continue sign and return
+				ret[olen] = payload; olen = olen + 1
+				return ret, olen
+			end
+		end
+		idx = idx + 7
+	end
+	assert(false, "should not reach here")
+end
+
+function _M.decode_binary(bin, limit, out, olimit)
+	-- encode with every 7 byte chunk
+	local src = ffi.cast('const char *', bin)
+	local limit = limit or (10 * 1000 * 1000 * 1000)
+	local ret = out
+	local idx = 0
+	local olen = 0
+	while idx < limit do
+		local header = src[idx]
+		for i=1,7 do
+			-- print(i, src[idx + 1], header, bit.band(header, bit.lshift(1, 7 - i)) ~= 0, bit.band(src[idx + i], 0x7f))
+			local terminate = (bit.band(src[idx + i], 0x80) == 0)
+			local payload = (bit.band(header, bit.lshift(1, 7 - i)) ~= 0 and 0x80 or 0) + bit.band(src[idx + i], 0x7f)
+			ret[olen] = payload; olen = olen + 1
+			if terminate then
+				return ret, olen, idx + i + 1
+			end
+		end
+		idx = idx + 8
+	end
+	assert(false, "should not reach here")
+end
+
 return _M
+
