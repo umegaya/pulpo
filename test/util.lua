@@ -16,13 +16,14 @@ print(socket.inet_namebyhost(ret:address()), socket.inet_namebyhost(ret:netmask(
 local ret = memory.alloc_fill_typed('char', 4096)
 local ret2 = memory.alloc_fill_typed('char', 4096)
 local function codec(src)
+	-- print('------------- codec')
 	local ofs, ofs2 = 0, 0
 	for i=1,#src do
-		print('encode', ('%q'):format(src[i]), #src[i])
+		-- print('encode', ('%q'):format(src[i]), #src[i])
 		local _, olen = util.encode_binary(src[i], #src[i], ret + ofs, 4096 - ofs)
 		ofs = ofs + olen
 	end
-	print('encode result', ('%q'):format(ffi.string(ret, ofs)))
+	-- print('encode result', ('%q'):format(ffi.string(ret, ofs)))
 	local rsrc = { len = {} }
 	local len = ofs
 	ofs = 0
@@ -30,7 +31,7 @@ local function codec(src)
 		local tmp, tlen, n_read  = util.decode_binary(ret + ofs, len - ofs, ret2 + ofs2, 4096 - ofs2)
 		ofs = ofs + n_read
 		ofs2 = ofs2 + tlen
-		print('decode', ('%q'):format(ffi.string(tmp, tlen)), tlen, n_read)
+		-- print('decode', ('%q'):format(ffi.string(tmp, tlen)), tlen, n_read, len, ofs)
 		table.insert(rsrc, tmp)
 		table.insert(rsrc.len, tlen)
 	end
@@ -83,6 +84,9 @@ local srcs2 = {
 	{"", u64tostr(1)},
 	{"", u64tostr(0xFFFFFFFFFFFFFFFFULL)},
 	{"\0"},
+	{"/a"},
+	{"/aa"},
+	{"/b"},
 	{"a"},
 	{"a\0"},
 	{"a\0\0\0\0\0"},
@@ -113,8 +117,8 @@ end
 
 for i=2,#converted do
 	local prev, curr = converted[i - 1], converted[i]
-	-- [[
-	print('----------------')
+	--[[
+	print('----------------', srcs2[i][1], srcs2[i - 1][1])
 	-- print('check', ('%q'):format(ffi.string(curr[1], curr[2])), ('%q'):format(ffi.string(prev[1], prev[2])))
 	for i=0,curr[2]-1 do io.write((':%02x'):format(curr[1][i])) end; io.write('\n')
 	print('vs')

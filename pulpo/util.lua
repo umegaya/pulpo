@@ -204,6 +204,14 @@ end
 function _M.encode_binary_length(len)
 	return (math.ceil(tonumber(len) / 7) * 8) + 1
 end
+local encode_masks = {
+	{0x01, 0xfc},
+	{0x03, 0xf8},
+	{0x07, 0xf0},
+	{0x0f, 0xe0},
+	{0x1f, 0xc0},
+	{0x3f, 0x80},
+}
 function _M.encode_binary(bin, len, out, olimit)
 	-- encode with every 7 byte chunk
 	local src = ffi.cast('const uint8_t *', bin)
@@ -213,32 +221,46 @@ function _M.encode_binary(bin, len, out, olimit)
 	if olimit < _M.encode_binary_length(len) then
 		assert(false, "output buffer too short")
 	end
-	-- print(idx, len)
 	while idx < len do
-		local tmp = 0x80
-		for i=0,6 do
-			if (idx + i) < len then
-				tmp = tmp + (bit.band(0x80, src[idx + i]) ~= 0 and bit.lshift(1, 6 - i) or 0)
+		--[[
+			0 :                      (curr & 0xfe) >> 1
+			1 : (prev & 0x01) << 6 + (curr & 0xfc) >> 2
+			2 : (prev & 0x03) << 5 + (curr & 0xf8) >> 3
+			3 : (prev & 0x07) << 4 + (curr & 0xf0) >> 4
+			4 : (prev & 0x0f) << 3 + (curr & 0xe0) >> 5
+			5 : (prev & 0x1f) << 2 + (curr & 0xc0) >> 6
+			6 : (prev & 0x3f) << 1 + (curr & 0x80) >> 7
+			7 : (prev & 0x7f)
+		]]
+		ret[olen] = bit.rshift(bit.band(src[idx], 0xfe), 1) + 0x80; olen = olen + 1
+		for i=1,6 do
+			local prev = src[idx + i - 1]
+			if (idx + i) >= len then
+				ret[olen] = bit.lshift(bit.band(prev, encode_masks[i][1]), 7 - i) + 0x80; olen = olen + 1
+				goto LAST
 			end
-		end
-		-- chunk header of payload
-		-- print('ret = ', ret)
-		ret[olen] = tmp; olen = olen + 1
-		for i=0,6 do
-			local payload = bit.band(0x7f, src[idx + i])
+			local curr = src[idx + i]
+			local payload 
+				= bit.lshift(bit.band(prev, encode_masks[i][1]), 7 - i)
+				+ bit.rshift(bit.band(curr, encode_masks[i][2]), i + 1)
 			ret[olen] = payload + 0x80; olen = olen + 1
-			if (idx + i) >= (len - 1) then
-				-- last byte. does not set continue sign and return
-				break
-			end
 		end
+		ret[olen] = bit.band(src[idx + 6], 0x7f) + 0x80; olen = olen + 1
 		idx = idx + 7
 	end
-	-- special case :  encode empty string to [0x00]
+::LAST::
 	ret[olen] = 0x00; olen = olen + 1
 	return ret, olen
 end
-
+local decode_masks = {
+	{0x7f, 0x40},
+	{0x3f, 0x60},
+	{0x1f, 0x70},
+	{0x0f, 0x78},
+	{0x07, 0x7c},
+	{0x03, 0x7e},
+	{0x01, 0x7f},
+}
 function _M.decode_binary(bin, limit, out, olimit)
 	-- encode with every 7 byte chunk
 	local src = ffi.cast('const uint8_t *', bin)
@@ -246,21 +268,37 @@ function _M.decode_binary(bin, limit, out, olimit)
 	local ret = out
 	local idx = 0
 	local olen = 0
+	if src[idx] == 0x00 then
+		return ret, 0, 1
+	end
 	while idx < limit do
+		--[[
+			0 : (curr & 0x7f) << 1 + (next & 0x40) >> 6
+			1 : (curr & 0x3f) << 2 + (next & 0x60) >> 5
+			2 : (curr & 0x1f) << 3 + (next & 0x70) >> 4 
+			3 : (curr & 0x0f) << 4 + (next & 0x78) >> 3
+			4 : (curr & 0x07) << 5 + (next & 0x7c) >> 2
+			5 : (curr & 0x03) << 6 + (next & 0x7e) >> 1
+			6 : (curr & 0x01) << 7 + (next & 0x7f) >> 0
+		]]
 		if src[idx] == 0x00 then
 			return ret, olen, idx + 1
 		end
-		local header = src[idx]
-		for i=1,7 do
-			if src[idx + i] == 0x00 then
-				return ret, olen, idx + i + 1
+		for i=0,6 do
+			local curr, nxt = src[idx + i], src[idx + i + 1]
+			if nxt == 0x00 then
+				return ret, olen, idx + i + 2
 			end
 			-- print(i, src[idx + 1], header, bit.band(header, bit.lshift(1, 7 - i)) ~= 0, bit.band(src[idx + i], 0x7f))
-			local payload = (bit.band(header, bit.lshift(1, 7 - i)) ~= 0 and 0x80 or 0) + bit.band(src[idx + i], 0x7f)
+			local payload 
+				= bit.lshift(bit.band(curr, decode_masks[i + 1][1]), i + 1) 
+				+ bit.rshift(bit.band(nxt, decode_masks[i + 1][2]), 6 - i)
+			-- print('payload', i, ('%02x'):format(payload))
 			ret[olen] = payload; olen = olen + 1
 		end
 		idx = idx + 8
 	end
+	print(idx, limit)
 	assert(false, "should not reach here")
 end
 

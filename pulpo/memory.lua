@@ -125,7 +125,7 @@ function _M.rawcmp_ex(dst, dsz, src, ssz)
 		return ssz <= 0 and 0 or -1
 	elseif ssz <= 0 then -- src is min key
 		-- unless dst is min key, src is smaller
-		return dst <= 0 and 0 or 1
+		return dsz <= 0 and 0 or 1
 	elseif dsz < ssz then
 		local r = _M.rawcmp(dst, src, dsz)
 		return r > 0 and 1 or -1 

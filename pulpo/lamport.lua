@@ -133,7 +133,16 @@ function hlc_mt:__lt(lc)
 	end
 end
 function hlc_mt:__tostring()
-	return self:walltime()..":"..tonumber(self.layout.logical_clock)
+	if false then
+		local p = ffi.cast('unsigned char *', self)
+		local r = "hlc:bin"
+		for i=0, ffi.sizeof(self)-1 do
+			r = r .. (':%02x'):format(p[i])
+		end
+		return r
+	else
+		return self:walltime()..":"..tonumber(self.layout.logical_clock)
+	end
 end
 
 function hlc_mt:as_byte_string()
