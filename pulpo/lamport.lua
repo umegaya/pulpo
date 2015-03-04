@@ -40,6 +40,7 @@ typedef struct pulpo_lamport_causality_checker {
 ]]
 
 _M.MAX_HLC_WALLTIME = (bit.lshift(1, 10) * 0x100000000) - 1
+_M.MAX_HLC_LOGICAL_CLOCK = (bit.lshift(1, 22) - 1)
 
 -- hibrid logical clock
 local hlc_mt = {}

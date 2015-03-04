@@ -202,11 +202,11 @@ end
 -- encoding binary with the way which can be put terminate flag in its data and keeping lexicographicity
 -- (that is, if a <= b lexicographically, enc(a) <= enc(b) lexicographicity is true)
 function _M.encode_binary_length(len)
-	return (math.ceil(len / 7) * 8)
+	return (math.ceil(tonumber(len) / 7) * 8) + 1
 end
 function _M.encode_binary(bin, len, out, olimit)
 	-- encode with every 7 byte chunk
-	local src = ffi.cast('const char *', bin)
+	local src = ffi.cast('const uint8_t *', bin)
 	local ret = out
 	local idx = 0
 	local olen = 0
@@ -215,7 +215,7 @@ function _M.encode_binary(bin, len, out, olimit)
 	end
 	-- print(idx, len)
 	while idx < len do
-		local tmp = 0
+		local tmp = 0x80
 		for i=0,6 do
 			if (idx + i) < len then
 				tmp = tmp + (bit.band(0x80, src[idx + i]) ~= 0 and bit.lshift(1, 6 - i) or 0)
@@ -226,36 +226,38 @@ function _M.encode_binary(bin, len, out, olimit)
 		ret[olen] = tmp; olen = olen + 1
 		for i=0,6 do
 			local payload = bit.band(0x7f, src[idx + i])
-			if (idx + i) < (len - 1) then
-				ret[olen] = payload + 0x80; olen = olen + 1
-			else
+			ret[olen] = payload + 0x80; olen = olen + 1
+			if (idx + i) >= (len - 1) then
 				-- last byte. does not set continue sign and return
-				ret[olen] = payload; olen = olen + 1
-				return ret, olen
+				break
 			end
 		end
 		idx = idx + 7
 	end
-	assert(false, "should not reach here")
+	-- special case :  encode empty string to [0x00]
+	ret[olen] = 0x00; olen = olen + 1
+	return ret, olen
 end
 
 function _M.decode_binary(bin, limit, out, olimit)
 	-- encode with every 7 byte chunk
-	local src = ffi.cast('const char *', bin)
+	local src = ffi.cast('const uint8_t *', bin)
 	local limit = limit or (10 * 1000 * 1000 * 1000)
 	local ret = out
 	local idx = 0
 	local olen = 0
 	while idx < limit do
+		if src[idx] == 0x00 then
+			return ret, olen, idx + 1
+		end
 		local header = src[idx]
 		for i=1,7 do
-			-- print(i, src[idx + 1], header, bit.band(header, bit.lshift(1, 7 - i)) ~= 0, bit.band(src[idx + i], 0x7f))
-			local terminate = (bit.band(src[idx + i], 0x80) == 0)
-			local payload = (bit.band(header, bit.lshift(1, 7 - i)) ~= 0 and 0x80 or 0) + bit.band(src[idx + i], 0x7f)
-			ret[olen] = payload; olen = olen + 1
-			if terminate then
+			if src[idx + i] == 0x00 then
 				return ret, olen, idx + i + 1
 			end
+			-- print(i, src[idx + 1], header, bit.band(header, bit.lshift(1, 7 - i)) ~= 0, bit.band(src[idx + i], 0x7f))
+			local payload = (bit.band(header, bit.lshift(1, 7 - i)) ~= 0 and 0x80 or 0) + bit.band(src[idx + i], 0x7f)
+			ret[olen] = payload; olen = olen + 1
 		end
 		idx = idx + 8
 	end
