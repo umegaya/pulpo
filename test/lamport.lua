@@ -43,4 +43,16 @@ for i=17,32 do
 end
 assert(l2.oldest == lc(17), "oldest should be updated correctly")
 
+--- hlc test
+local hlc = ffi.new('pulpo_hlc_t')
+hlc:debug_init(1e10, 30)
+assert(hlc:walltime() == 1e10)
+assert(hlc:logical_clock() == 30)
+hlc:debug_init(lamport.MAX_HLC_WALLTIME, lamport.MAX_HLC_LOGICAL_CLOCK)
+assert(hlc:walltime() == lamport.MAX_HLC_WALLTIME)
+assert(hlc:logical_clock() == lamport.MAX_HLC_LOGICAL_CLOCK)
+assert(lamport.ZERO_HLC:walltime() == 0)
+assert(lamport.ZERO_HLC:logical_clock() == 0)
+
+
 return true

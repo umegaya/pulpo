@@ -1,6 +1,7 @@
 local ffi = require 'ffiex.init'
 local util = require 'pulpo.util'
 local memory = require 'pulpo.memory'
+local socket = require 'pulpo.socket'
 local _M = {}
 local payload_map = {}
 local function get_payload_map(crc)
@@ -17,8 +18,7 @@ ffi.cdef [[
 //the concept is borrowed from cockroach db.
 typedef union pulpo_hlc {
 	struct pulpo_hlc_layout {
-		uint32_t walltime_lo;
-		uint32_t walltime_hi:10, logical_clock:22;
+		uint32_t data[2];
 	} layout;
 	uint64_t value;
 	uint8_t p[0];
@@ -49,20 +49,28 @@ function hlc_mt:init()
 	self.value = 0
 end
 function hlc_mt:debug_init(msec_walltime, logical_clock)
-	self:set_walltime(msec_walltime)
-	self.layout.logical_clock = logical_clock
+	self:pack_values(msec_walltime, logical_clock)
 end
 function hlc_mt:initialized()
 	return self.value ~= 0
 end
+function hlc_mt:v(idx)
+	return tonumber(socket.ntohl(self.layout.data[idx]))
+end
+function hlc_mt:pack_values(wt, lc)
+	self.layout.data[0] = socket.htonl(math.floor(wt / bit.lshift(1, 10)))
+	self.layout.data[1] = socket.htonl(bit.lshift(bit.band(wt, bit.lshift(1, 10) - 1), 22) + lc)
+end
 function hlc_mt:logical_clock()
-	return self.layout.logical_clock
+	return bit.band(self:v(1), _M.MAX_HLC_LOGICAL_CLOCK)
+end
+function hlc_mt:set_logical_clock(lc)
+	self:pack_values(self:walltime(), lc)
 end
 function hlc_mt:witness(lc, offset)
 	local ts = msec_timestamp()
 	if (lc:walltime() < ts) and (self:walltime() < ts) then
-		self:set_walltime(ts)
-		self.layout.logical_clock = 0
+		self:pack_values(ts, 0)
 		return
 	end
 
@@ -71,33 +79,30 @@ function hlc_mt:witness(lc, offset)
 			logger.error('invalid clock', lc, lc:walltime(), ts)
 			return
 		end
-		self:set_walltime(lc:walltime())
-		self.layout.logical_clock = lc.layout.logical_clock + 1
+		self:pack_values(lc:walltime(), lc:logical_clock() + 1)
 	elseif lc < self then
-		self.layout.logical_clock = self.layout.logical_clock + 1
+		self:set_logical_clock(self:logical_clock() + 1)
 	else
-		if lc.layout.logical_clock > self.layout.logical_clock then
-			self.layout.logical_clock = lc.layout.logical_clock
+		if lc:logical_clock() > self:logical_clock() then
+			self:set_logical_clock(lc:logical_clock())
 		end
-		self.layout.logical_clock = self.layout.logical_clock + 1
+		self:set_logical_clock(self:logical_clock() + 1)
 	end
 end
 function hlc_mt:next()
 	local ts = msec_timestamp()
 	if self:walltime() >= ts then
-		self.layout.logical_clock = self.layout.logical_clock + 1
+		self:set_logical_clock(self:logical_clock() + 1)
 	else
-		self:set_walltime(ts)
-		self.layout.logical_clock = 0
+		self:pack_values(ts, 0)
 	end
 	return self
 end
 function hlc_mt:set_walltime(wt)
-	self.layout.walltime_hi = wt / 0x100000000
-	self.layout.walltime_lo = bit.band(wt, 0xFFFFFFFF)
+	self:pack_values(wt, self:logical_clock())
 end
 function hlc_mt:walltime()
-	return (tonumber(self.layout.walltime_hi) * 0x100000000) + self.layout.walltime_lo
+	return (self:v(0) * bit.lshift(1, 10)) + bit.rshift(self:v(1), 22)
 end
 function hlc_mt:copy_to(to)
 	to.value = self.value
@@ -109,7 +114,7 @@ function hlc_mt:add_walltime(sec)
 	return self
 end
 function hlc_mt:__mod(n)
-	return (self.layout.logical_clock + self.layout.walltime_lo) % n
+	return (self:logical_clock() + self:walltime()) % n
 end
 function hlc_mt:__eq(lc)
 	return lc.value == self.value
@@ -120,7 +125,7 @@ function hlc_mt:__le(lc)
 	elseif self:walltime() > lc:walltime() then
 		return false
 	else
-		return self.layout.logical_clock <= lc.layout.logical_clock
+		return self:logical_clock() <= lc:logical_clock()
 	end
 end
 function hlc_mt:__lt(lc)
@@ -129,7 +134,7 @@ function hlc_mt:__lt(lc)
 	elseif self:walltime() > lc:walltime() then
 		return false
 	else
-		return self.layout.logical_clock < lc.layout.logical_clock
+		return self:logical_clock() < lc:logical_clock()
 	end
 end
 function hlc_mt:__tostring()
@@ -141,7 +146,7 @@ function hlc_mt:__tostring()
 		end
 		return r
 	else
-		return self:walltime()..":"..tonumber(self.layout.logical_clock)
+		return self:walltime()..":"..tonumber(self:logical_clock())
 	end
 end
 

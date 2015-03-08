@@ -44,7 +44,8 @@ end
 -- @see		ntohl
 function _M.htonl(x)
 	if LITTLE_ENDIAN then
-		return _M.htons( bit.band( tonumber(x), 0xFFFF ) ) * 0x10000 + _M.htons( bit.rshift( tonumber(x), 16 ) ) 
+		return tonumber(ffi.cast('uint32_t', bit.bswap(x)))
+		-- return _M.htons( bit.band( tonumber(x), 0xFFFF ) ) * 0x10000 + _M.htons( bit.rshift( tonumber(x), 16 ) ) 
 	else
 		return x
 	end
@@ -55,8 +56,9 @@ function _M.htonll(x, check)
 		local r = ffi.new('uint64_t', (_M.htonl( x % 0x100000000 ) * 0x100000000)) + _M.htonl( x / 0x100000000 )
 		if not check then
 			if (tonumber(_M.ntohll(r, true)) ~= tonumber(x)) then
+				print(r, x)
 				logger.error('htonll error')
-				print(ffi.typeof(x), ffi.typeof(r), util.sprintf('%llx', 32, _M.ntohll(r, true)), util.sprintf('%llx', 32, x), _M.ntohll(r, true) - x)
+				print(util.sprintf('%llx', 32, _M.ntohll(r, true)), util.sprintf('%llx', 32, x), _M.ntohll(r, true) - x)
 			end
 		end
 		return r
@@ -96,6 +98,8 @@ _M.ntohs = _M.htons
 _M.ntohl = _M.htonl
 
 _M.ntohll = _M.htonll
+
+assert(0xFFFFFFFF == _M.ntohl(_M.htonl(0xFFFFFFFF)))
 
 -- load/store 2/4/8 byte number/ctype from/to bytes array
 function _M.get16(bytes)
