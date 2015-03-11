@@ -44,7 +44,7 @@ end
 -- @see		ntohl
 function _M.htonl(x)
 	if LITTLE_ENDIAN then
-		return tonumber(ffi.cast('uint32_t', bit.bswap(x)))
+		return tonumber(ffi.cast('uint32_t', bit.bswap(tonumber(x))))
 		-- return _M.htons( bit.band( tonumber(x), 0xFFFF ) ) * 0x10000 + _M.htons( bit.rshift( tonumber(x), 16 ) ) 
 	else
 		return x
