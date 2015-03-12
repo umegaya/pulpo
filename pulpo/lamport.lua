@@ -107,6 +107,11 @@ end
 function hlc_mt:copy_to(to)
 	to.value = self.value
 end
+function hlc_mt:clone(gc)
+	local p = gc and memory.managed_alloc_typed('pulpo_hlc_t') or memory.alloc_typed('pulpo_hlc_t')
+	self:copy_to(p)
+	return p[0]
+end
 function hlc_mt:add_walltime(sec)
 	local wt = self:walltime()
 	wt = wt + math.floor(sec * 1000)
