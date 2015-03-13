@@ -156,7 +156,7 @@ local function run_ptrace_process(...)
 		'%s -e "(require \'pulpo.thread\').initialize({ datadir=\'%s\'});'..
 		'(require \'pulpo.debug.watchpoint\').regctl(%d,%s)"'
 	):format(
-		arg[-1],
+		util.luajit_cmdline(),
 		loader.cache_dir,
 		C.getpid(), table.concat(tmp, ',')
     )

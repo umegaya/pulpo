@@ -302,5 +302,19 @@ function _M.decode_binary(bin, limit, out, olimit)
 	assert(false, "should not reach here")
 end
 
+function _M.luajit_cmdline()
+	local idx = -1
+	while true do
+		if arg[idx]:match('^luajit') or arg[idx]:match('^lj') then
+			break
+		elseif arg[idx] == '-e' then
+			-- quote and escape lua code
+			arg[idx + 1] = ('"%s"'):format(arg[idx + 1]:gsub('"', '\\"'))
+		end
+		idx = idx - 1
+	end
+	return table.concat({unpack(arg, idx, -1)}, ' ')
+end
+
 return _M
 
