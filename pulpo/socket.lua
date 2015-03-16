@@ -98,6 +98,7 @@ _M.ntohs = _M.htons
 _M.ntohl = _M.htonl
 
 _M.ntohll = _M.htonll
+_M.ntohll_signed = _M.htonll_signed
 
 assert(0xFFFFFFFF == _M.ntohl(_M.htonl(0xFFFFFFFF)))
 

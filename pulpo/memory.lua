@@ -120,6 +120,9 @@ end
 
 function _M.rawcmp_ex(dst, dsz, src, ssz)
 	-- print('rawcmp_ex', dsz, ssz)
+	-- if not dsz then
+	-- 	print(debug.traceback())
+	-- end
 	if dsz <= 0 then -- dst is min key
 		-- unless src is min key, dst is smaller
 		return ssz <= 0 and 0 or -1
