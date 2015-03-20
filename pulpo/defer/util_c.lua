@@ -8,7 +8,7 @@ local _M = (require 'pulpo.package').module('pulpo.defer.util_c')
 local C = ffi.C
 local ffi_state = loader.load('util.lua', {
 	"getrlimit", "setrlimit", "struct timespec", "struct timeval", "nanosleep",
-	"gettimeofday", "snprintf", "strnlen", "strncmp", "getpid", 
+	"gettimeofday", "snprintf", "strnlen", "strncmp", "getpid", "pulpo_walltime_t",
 }, {
 	"RLIMIT_NOFILE",
 	"RLIMIT_CORE",
@@ -19,6 +19,7 @@ local ffi_state = loader.load('util.lua', {
 	#include <stdio.h>
 	#include <unistd.h>
 	#include <string.h>
+	typedef uint64_t pulpo_walltime_t;
 ]] or (ffi.os == "Linux" and [[
 	#include <time.h>
 	#include <sys/time.h> 
@@ -28,6 +29,7 @@ local ffi_state = loader.load('util.lua', {
 	#include <stdio.h>
 	#include <unistd.h>
 	#include <string.h>
+	typedef uint64_t pulpo_walltime_t;
 ]] or assert(false, "unsupported OS:"..ffi.os)))
 
 local RLIMIT_CORE = ffi_state.defs.RLIMIT_CORE
@@ -177,7 +179,16 @@ function _M.clock_pair()
 	C.gettimeofday(_M.tval, nil)
 	return _M.tval[0].tv_sec, _M.tval[0].tv_usec
 end
-
+local clock_int_work = memory.alloc_typed('pulpo_walltime_t')
+function _M.walltime()
+	C.gettimeofday(_M.tval, nil)
+	clock_int_work[0] = _M.tval[0].tv_sec * 1000 * 1000
+	return clock_int_work[0] + _M.tval[0].tv_usec
+end
+function _M.msec_walltime()
+	local s,us = _M.clock_pair()
+	return math.ceil(tonumber((s * 1000) + (us / 1000)))
+end
 local fmt_buf = {}
 local fmt_buf_index = 0
 local fmt_buf_num = 16

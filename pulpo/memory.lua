@@ -147,4 +147,8 @@ function _M.free(p)
 	C.free(p)
 end
 
+function _M.smart(p)
+	return ffi.gc(p, _M.free)
+end
+
 return _M

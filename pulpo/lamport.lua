@@ -7,10 +7,6 @@ local payload_map = {}
 local function get_payload_map(crc)
 	return payload_map[crc]
 end
-local function msec_timestamp()
-	local s,us = util.clock_pair()
-	return math.ceil(tonumber((s * 1000) + (us / 1000)))
-end
 
 
 ffi.cdef [[
@@ -48,8 +44,8 @@ hlc_mt.__index = hlc_mt
 function hlc_mt:init()
 	self.value = 0
 end
-function hlc_mt:debug_init(msec_walltime, logical_clock)
-	self:pack_values(msec_walltime, logical_clock)
+function hlc_mt:debug_init(msec_timestamp, logical_clock)
+	self:pack_values(msec_timestamp, logical_clock)
 end
 function hlc_mt:initialized()
 	return self.value ~= 0
@@ -61,6 +57,9 @@ function hlc_mt:pack_values(wt, lc)
 	self.layout.data[0] = socket.htonl(math.floor(wt / bit.lshift(1, 10)))
 	self.layout.data[1] = socket.htonl(bit.lshift(bit.band(wt, bit.lshift(1, 10) - 1), 22) + lc)
 end
+function hlc_mt:least_greater_of(hlc)
+	self:pack_values(hlc:walltime(), hlc:logical_clock() + 1)
+end
 function hlc_mt:logical_clock()
 	return bit.band(self:v(1), _M.MAX_HLC_LOGICAL_CLOCK)
 end
@@ -68,7 +67,7 @@ function hlc_mt:set_logical_clock(lc)
 	self:pack_values(self:walltime(), lc)
 end
 function hlc_mt:witness(lc, offset)
-	local ts = msec_timestamp()
+	local ts = util.msec_walltime()
 	if (lc:walltime() < ts) and (self:walltime() < ts) then
 		self:pack_values(ts, 0)
 		return
@@ -90,7 +89,7 @@ function hlc_mt:witness(lc, offset)
 	end
 end
 function hlc_mt:next()
-	local ts = msec_timestamp()
+	local ts = util.msec_walltime()
 	if self:walltime() >= ts then
 		self:set_logical_clock(self:logical_clock() + 1)
 	else
@@ -114,9 +113,16 @@ function hlc_mt:clone(gc)
 end
 function hlc_mt:add_walltime(sec)
 	local wt = self:walltime()
-	wt = wt + math.floor(sec * 1000)
+	if sec > 0 then
+		wt = wt + math.floor(sec * 1000)
+	else
+		wt = wt + math.ceil(sec * 1000)
+	end
 	self:set_walltime(wt)
 	return self
+end
+function hlc_mt:inc_logical_clock()
+	self:set_logical_clock(self:logical_clock())
 end
 function hlc_mt:__mod(n)
 	return (self:logical_clock() + self:walltime()) % n
@@ -279,7 +285,7 @@ function _M.destroy(cc)
 end
 function _M.debug_make_hlc(clock, msec)
 	local p = ffi.new('pulpo_hlc_t')
-	p:debug_init(msec or msec_timestamp(), clock)
+	p:debug_init(msec or util.msec_walltime(), clock)
 	return p
 end
 _M.ZERO_HLC = _M.debug_make_hlc(0, 0)
