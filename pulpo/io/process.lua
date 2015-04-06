@@ -93,14 +93,18 @@ end
 
 HANDLER_TYPE_PROCESS = poller.add_handler("process", process_read, process_write, process_gc, process_addr)
 
-function _M.open(p, cmd, mode)
+function _M.open(p, cmd, mode, opts)
 	local ctx = memory.alloc_typed('pulpo_process_context_t')
 	local fp = C.popen(cmd, mode or "r")
 	if fp == ffi.NULL then
-		raise('syscall', 'popen', 'create file handle') 
+		raise('syscall', 'popen') 
 	end
 	ctx.fp = fp
 	local fd = C.fileno(fp)
+	if _M.setsockopt(fd, opts) < 0 then
+		C.close(fd)
+		raise('syscall', 'setsockopt') 
+	end
 	local io = p:newio(fd, HANDLER_TYPE_PROCESS, ctx)
 	event.add_to(io, 'open')
 	-- tcp_connect(io)
