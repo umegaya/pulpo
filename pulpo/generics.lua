@@ -75,7 +75,7 @@ function _M.erastic_list(type, name)
 				return t.list + index
 			end,
 			reserve = function (t, rsize)
-				if t.used + rsize > t.size then
+				if (t.used + rsize) > t.size then
 					local newsize = (t.size * 2)
 					local p = memory.realloc_typed(type, t.list, newsize)
 					if p then
@@ -126,9 +126,10 @@ function _M.erastic_map(type, name)
 				memory.free(t.list)
 			end,
 			reserve = function (t, space)
-				if t.size < (t.used + space) then
-					p = memory.realloc_typed(elemtype, t.list, t.size * 2)
+				if (t.used + space) > t.size then
+					local p = memory.realloc_typed(elemtype, t.list, t.size * 2)
 					if p then
+						--logger.notice('emap:size:', t.size, t.size * 2, t.list, p)
 						t.list = p 
 						t.size = t.size * 2
 					else

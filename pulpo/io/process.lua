@@ -101,7 +101,7 @@ function _M.open(p, cmd, mode, opts)
 	end
 	ctx.fp = fp
 	local fd = C.fileno(fp)
-	if _M.setsockopt(fd, opts) < 0 then
+	if socket.setsockopt(fd, opts) < 0 then
 		C.close(fd)
 		raise('syscall', 'setsockopt') 
 	end
@@ -109,6 +109,20 @@ function _M.open(p, cmd, mode, opts)
 	event.add_to(io, 'open')
 	-- tcp_connect(io)
 	return io
+end
+
+function _M.execute(p, cmd)
+	local io = _M.open(p, cmd)
+	local str = ""
+	local buf = ffi.new('char[256]')
+	while true do
+		local ok, r = io:read(buf, 256)
+		if not ok then
+			return r, str
+		else
+			str = str .. ffi.string(buf, ok)
+		end
+	end
 end
 
 return _M

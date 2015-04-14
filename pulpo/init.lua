@@ -134,10 +134,11 @@ local function config_logger(opts)
 		}))
 		logger.info('logging start at', logdir)
 	else
+		local start_at = util.clock()
 		log.redirect("default", function (setting, ...)
 			PT.pthread_mutex_lock(_M.logger_mutex)
 			term[setting.color]()
-			io.write(("%s "):format(os.clock()))
+			io.write(("%s "):format(util.clock() - start_at))
 			io.write(logpfx)
 			io.write(setting.tag)
 			print(...)
@@ -210,15 +211,15 @@ end
 
 function _M.main(proc, arg, opq)
 	local pulpo = require 'pulpo.init'
-	pulpo.tentacle(function (fn, a, fzr)
+	pulpo.tentacle(function (fn, a, o)
 		local ok, r = xpcall(fn, err_handler, a)
 		if not r then
-			opq.finished = 1
+			o.finished = 1
 			if _M.is_all_thread_finished() then
 				_M.stop()
 			end
 		end
-	end, proc, arg, finalizer)
+	end, proc, arg, opq)
 end
 
 function _M.wrap_poller(p)

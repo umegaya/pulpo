@@ -60,7 +60,7 @@ function io_index.address(t)
 	return address_handlers[t:type()](t)
 end
 function io_index.close(t, reason)
-	-- logger.info("fd=", t:fd(), " closed by user")
+	-- logger.info("fd=", t:fd(), t:address(), " closed by user", debug.traceback())
 	t:fin(reason)
 end
 function io_index.__cancel(t, co)
