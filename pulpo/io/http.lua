@@ -53,10 +53,7 @@ ffi.cdef [[
 	typedef struct pulpo_http_context {
 		//this is nasty hack to reuse ssl/tcp routines for http/https processing.
 		//pointer of this struct cast to the ptr of following structs. so never move their decls from top of struct
-		union {
-			pulpo_tcp_context_t tcp;
-			pulpo_ssl_context_t ssl;
-		};
+		pulpo_tcp_context_t tcp;
 		char *buffer;
 		size_t len, ofs;
 		struct phr_chunked_decoder decoder[1];
@@ -65,15 +62,12 @@ ffi.cdef [[
 			pulpo_http_response_t resp;
 		};
 	} pulpo_http_context_t;
-	typedef union pulpo_http_server_context {
+	typedef struct pulpo_http_server_context {
 		pulpo_tcp_server_context_t tcp_server;
-		pulpo_ssl_server_context_t ssl_server;
 	} pulpo_http_server_context_t;
 ]]
 assert(ffi.offsetof('pulpo_http_context_t', 'tcp') == 0)
-assert(ffi.offsetof('pulpo_http_context_t', 'ssl') == 0)
 assert(ffi.offsetof('pulpo_http_server_context_t', 'tcp_server') == 0)
-assert(ffi.offsetof('pulpo_http_server_context_t', 'ssl_server') == 0)
 
 local MAX_HEADERS = 100
 local MAX_REQLEN = (8192 + 4096 * (MAX_HEADERS))
@@ -85,6 +79,94 @@ local HEADER_SEP = ":"
 local CONTENT_LENGTH = "Content-Length"
 local TRANSFER_ENCODING = "Transfer-Encoding"
 local CONNECTION = "Connection"
+
+
+--> helpers
+local vec_cache = {}
+local pulpo_iovec_list = gen.erastic_list('pulpo_iovec_t')
+local function new_vec()
+	local vec
+	if #vec_cache > 0 then
+		vec = table.remove(vec_cache)
+		vec:reset()
+	else
+		vec = memory.alloc_typed(pulpo_iovec_list)
+		vec:init(16)
+	end
+	return vec
+end
+local function free_vec(vec)
+	table.insert(vec_cache, vec)
+end
+_M.free_vec = free_vec
+local function set_vector_to_str(iovector, idx, v, vlen)
+	iovector:reserve(1)
+	local vec = iovector:at(idx)
+	vec.iov_base = ffi.cast('void *', v)
+	vec.iov_len = vlen or #v
+	iovector.used = iovector.used + 1
+end
+local function make_request(header, body, blen)
+	local idx = 1
+	local vec = new_vec()
+	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
+	set_vector_to_str(vec, 0, header[1])
+	if body and blen then
+		if not header[CONTENT_LENGTH] then
+			header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
+		end
+		set_vector_to_str(vec, idx, CONTENT_LENGTH)
+		set_vector_to_str(vec, idx + 1, HEADER_SEP)
+		set_vector_to_str(vec, idx + 2, header[CONTENT_LENGTH])
+		idx = idx + 3
+	end
+	for k,v in pairs(header) do
+		if type(k) == 'string' and (k ~= CONTENT_LENGTH) then
+			set_vector_to_str(vec, idx, k)
+			set_vector_to_str(vec, idx + 1, HEADER_SEP)
+			set_vector_to_str(vec, idx + 2, v)
+			set_vector_to_str(vec, idx + 3, CRLF)
+			idx = idx + 4
+		end
+	end
+	set_vector_to_str(vec, idx, CRLF)
+	if body and blen then
+		set_vector_to_str(vec, idx + 1, body, blen)
+	end
+	return vec
+end
+local function make_response(header, body, blen)
+	local idx
+	local vec = new_vec()
+	header = header or {}
+	if not header[CONTENT_LENGTH] then
+		header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
+	end
+	if not header[CONNECTION] then
+		header[CONNECTION] = "Keep-Alive"..CRLF
+	end
+	header[1] = ("HTTP/1.1 %d %s"..CRLF):format(header[1] or 200, header[2] or "OK")
+	set_vector_to_str(vec, 0, header[1])
+	set_vector_to_str(vec, 1, CONTENT_LENGTH)
+	set_vector_to_str(vec, 2, HEADER_SEP)
+	set_vector_to_str(vec, 3, header[CONTENT_LENGTH])
+	set_vector_to_str(vec, 4, CONNECTION)
+	set_vector_to_str(vec, 5, HEADER_SEP)
+	set_vector_to_str(vec, 6, header[CONNECTION])
+	idx = 7
+	for k,v in pairs(header) do
+		if type(k) == 'string' and (k ~= CONTENT_LENGTH) and (k ~= CONNECTION) then
+			set_vector_to_str(vec, idx, k)
+			set_vector_to_str(vec, idx + 1, HEADER_SEP)
+			set_vector_to_str(vec, idx + 2, v)
+			set_vector_to_str(vec, idx + 3, CRLF)
+			idx = idx + 4
+		end
+	end
+	set_vector_to_str(vec, idx, CRLF)
+	set_vector_to_str(vec, idx + 1, body, blen)
+	return vec
+end
 
 
 --> pulpo_http_request cdata
@@ -328,6 +410,22 @@ function http_context_mt:read_response(io)
 		goto retry
 	end
 end
+function http_context_mt:write_request(io, body, len, header)
+	if type(body) == 'table' then
+		header = body
+		body = nil
+	end
+	local vec = make_request(header, body, len)
+	local r = self:writev(io, vec.list, vec.used)
+	free_vec(vec)
+	return r
+end
+function http_context_mt:write_response(io, body, len, header)
+	local vec = make_response(header, body, len)
+	local r = self:writev(io, vec.list, vec.used)
+	free_vec(vec)
+	return r
+end
 function http_context_mt:read(io, p, len)
 	return tcp.rawread(io, p, len)
 end
@@ -337,98 +435,8 @@ end
 function http_context_mt:writev(io, vec, len)
 	return tcp.rawwritev(io, vec, len)
 end
+_M.context_mt = http_context_mt
 ffi.metatype('pulpo_http_context_t', http_context_mt)
-
-
---> helpers
-local function http_server_socket(p, fd, ctx)
-	return p:newio(fd, HANDLER_TYPE_HTTP_SERVER, ctx)	
-end
-
-local vec_cache = {}
-local pulpo_iovec_list = gen.erastic_list('pulpo_iovec_t')
-local function new_vec()
-	local vec
-	if #vec_cache > 0 then
-		vec = table.remove(vec_cache)
-		vec:reset()
-	else
-		vec = memory.alloc_typed(pulpo_iovec_list)
-		vec:init(16)
-	end
-	return vec
-end
-local function free_vec(vec)
-	table.insert(vec_cache, vec)
-end
-local function set_vector_to_str(iovector, idx, v, vlen)
-	iovector:reserve(1)
-	local vec = iovector:at(idx)
-	vec.iov_base = ffi.cast('void *', v)
-	vec.iov_len = vlen or #v
-	iovector.used = iovector.used + 1
-end
-local function make_request(header, body, blen)
-	local idx = 1
-	local vec = new_vec()
-	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
-	set_vector_to_str(vec, 0, header[1])
-	if body and blen then
-		if not header[CONTENT_LENGTH] then
-			header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
-		end
-		set_vector_to_str(vec, idx, CONTENT_LENGTH)
-		set_vector_to_str(vec, idx + 1, HEADER_SEP)
-		set_vector_to_str(vec, idx + 2, header[CONTENT_LENGTH])
-		idx = idx + 3
-	end
-	for k,v in pairs(header) do
-		if type(k) == 'string' and (k ~= CONTENT_LENGTH) then
-			set_vector_to_str(vec, idx, k)
-			set_vector_to_str(vec, idx + 1, HEADER_SEP)
-			set_vector_to_str(vec, idx + 2, v)
-			set_vector_to_str(vec, idx + 3, CRLF)
-			idx = idx + 4
-		end
-	end
-	set_vector_to_str(vec, idx, CRLF)
-	if body and blen then
-		set_vector_to_str(vec, idx + 1, body, blen)
-	end
-	return vec
-end
-local function make_response(header, body, blen)
-	local idx
-	local vec = new_vec()
-	header = header or {}
-	if not header[CONTENT_LENGTH] then
-		header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
-	end
-	if not header[CONNECTION] then
-		header[CONNECTION] = "Keep-Alive"..CRLF
-	end
-	header[1] = ("HTTP/1.1 %d %s"..CRLF):format(header[1] or 200, header[2] or "OK")
-	set_vector_to_str(vec, 0, header[1])
-	set_vector_to_str(vec, 1, CONTENT_LENGTH)
-	set_vector_to_str(vec, 2, HEADER_SEP)
-	set_vector_to_str(vec, 3, header[CONTENT_LENGTH])
-	set_vector_to_str(vec, 4, CONNECTION)
-	set_vector_to_str(vec, 5, HEADER_SEP)
-	set_vector_to_str(vec, 6, header[CONNECTION])
-	idx = 7
-	for k,v in pairs(header) do
-		if type(k) == 'string' and (k ~= CONTENT_LENGTH) and (k ~= CONNECTION) then
-			set_vector_to_str(vec, idx, k)
-			set_vector_to_str(vec, idx + 1, HEADER_SEP)
-			set_vector_to_str(vec, idx + 2, v)
-			set_vector_to_str(vec, idx + 3, CRLF)
-			idx = idx + 4
-		end
-	end
-	set_vector_to_str(vec, idx, CRLF)
-	set_vector_to_str(vec, idx + 1, body, blen)
-	return vec
-end
 
 
 
@@ -444,23 +452,11 @@ local function http_server_read(io)
 end
 
 local function http_write(io, body, len, header)
-	if type(body) == 'table' then
-		header = body
-		body = nil
-	end
-	local ctx = io:ctx('pulpo_http_context_t*')
-	local vec = make_request(header, body, len)
-	local r = ctx:writev(io, vec.list, vec.used)
-	free_vec(vec)
-	return r
+	return io:ctx('pulpo_http_context_t*'):write_request(io, body, len, header)
 end
 
 local function http_server_write(io, body, len, header)
-	local ctx = io:ctx('pulpo_http_context_t*')
-	local vec = make_response(header, body, len)
-	local r = ctx:writev(io, vec.list, vec.used)
-	free_vec(vec)
-	return r
+	return io:ctx('pulpo_http_context_t*'):write_response(io, body, len, header)
 end
 
 local ctx
