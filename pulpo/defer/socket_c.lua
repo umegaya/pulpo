@@ -13,10 +13,11 @@ local CDECLS = {
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", "inet_aton", 
 	"fcntl", "dup", "read", "write", "writev", "sendfile", "sendmsg", "recvmsg",
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
-	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t",
+	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t", "pulpo_iovec_t",
 	"struct ifreq", "struct ip_mreq", "struct msghdr", "ioctl", "popen", "pclose", 
 }
 local CHEADER = [[
+	#include <stdio.h>
 	#include <sys/socket.h>
 	#include <sys/uio.h>
 	#include <sys/ioctl.h>
@@ -58,6 +59,7 @@ local CHEADER = [[
 		struct ifaddrs *mem;
 		struct ifaddrs *data;
 	} pulpo_ifaddrs_t;
+	typedef struct iovec pulpo_iovec_t;
 ]]
 if ffi.os == "Linux" then
 	-- enum declaration required
@@ -415,8 +417,7 @@ function _M.table2sockopt(opts, alloc)
 		ffi.fill(opts_work_buffer, ffi.sizeof('pulpo_sockopt_t'))
 		return opts_work_buffer		
 	elseif type(opts) == "cdata" then
-		buf = opts
-		ffi.fill(buf, ffi.sizeof('pulpo_sockopt_t'))
+		return opts
 	elseif alloc then
 		buf = memory.alloc_fill_typed('pulpo_sockopt_t')
 	else

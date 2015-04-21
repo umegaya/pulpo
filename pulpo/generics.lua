@@ -74,6 +74,13 @@ function _M.erastic_list(type, name)
 			at = function (t, index)
 				return t.list + index
 			end,
+			insert = function (t, obj)
+				t:reserve(1)
+				t.list[t.used-1] = obj
+			end,
+			reset = function (t)
+				t.used = 0
+			end,
 			reserve = function (t, rsize)
 				if (t.used + rsize) > t.size then
 					local newsize = (t.size * 2)

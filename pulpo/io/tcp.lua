@@ -33,6 +33,7 @@ typedef struct pulpo_tcp_context {
 	pulpo_addr_t addr;
 	unsigned int state:8, padd:24;
 } pulpo_tcp_context_t;
+typedef pulpo_sockopt_t pulpo_tcp_server_context_t;
 ]]
 
 --> helper function
@@ -69,8 +70,8 @@ local function tcp_connect(io)
 	return true
 end
 
-local function tcp_server_socket(p, fd, ctx)
-	return p:newio(fd, HANDLER_TYPE_TCP, ctx)	
+local function tcp_server_socket(p, fd, ctx, hdtype)
+	return p:newio(fd, hdtype or HANDLER_TYPE_TCP, ctx)	
 end
 
 
@@ -99,6 +100,7 @@ local function tcp_read(io, ptr, len)
 	end
 	return n
 end
+_M.rawread = tcp_read
 
 local function on_write_error(io, ret)
 	local eno = errno.errno()
@@ -151,6 +153,7 @@ local function tcp_writev(io, vec, vlen)
 	end
 	return n
 end
+_M.rawwritev = tcp_writev
 
 local function tcp_writef(io, in_fd, offset_p, count)
 ::retry::
@@ -163,14 +166,14 @@ local function tcp_writef(io, in_fd, offset_p, count)
 end
 
 local ctx
-local function tcp_accept(io)
+local function tcp_accept(io, hdtype, _ctx)
 ::retry::
 	-- print('tcp_accept:', io:fd())
 	if not ctx then
 		-- because if C.accept returns any fd, there is no point to yield this funciton.
 		-- so other coroutine which call tcp_accept never intercept this ctx. 
 		-- we can reuse ctx pointer for next accept call.
-		ctx = memory.alloc_typed('pulpo_tcp_context_t')
+		ctx = _ctx and ffi.cast('pulpo_tcp_context_t *', _ctx) or memory.alloc_typed('pulpo_tcp_context_t')
 		ctx.addr:init()
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
@@ -187,7 +190,7 @@ local function tcp_accept(io)
 		end
 	else
 		-- apply same setting as server 
-		if socket.setsockopt(n, io:ctx('pulpo_sockopt_t*')) < 0 then
+		if socket.setsockopt(n, io:ctx('pulpo_tcp_server_context_t*')) < 0 then
 			C.close(n)
 			goto retry
 		end
@@ -195,8 +198,9 @@ local function tcp_accept(io)
 	local tmp = ctx
 	tmp.state = STATE.CONNECTED
 	ctx = nil
-	return tcp_server_socket(io.p, n, tmp)
+	return tcp_server_socket(io.p, n, tmp, hdtype)
 end
+_M.rawaccept = tcp_accept
 
 local function tcp_gc(io)
 	memory.free(io:ctx('void*'))
@@ -207,17 +211,19 @@ local function tcp_addr(io)
 	return io:ctx('pulpo_tcp_context_t*').addr
 end
 
+
 HANDLER_TYPE_TCP = poller.add_handler("tcp", tcp_read, tcp_write, tcp_gc, tcp_addr, tcp_writev, tcp_writef)
 HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tcp_gc)
 
-function _M.connect(p, addr, opts)
-	local ctx = memory.alloc_typed('pulpo_tcp_context_t')
+-- ctx should be mon-managed 
+function _M.connect(p, addr, opts, hdtype, ctx)
+	ctx = ctx and ffi.cast('pulpo_tcp_context_t*', ctx) or memory.alloc_typed('pulpo_tcp_context_t')
 	ctx.state = STATE.INIT
 	local fd = socket.stream(addr, opts, ctx.addr)
 	if not fd then 
 		raise('syscall', 'socket', 'create stream') 
 	end
-	local io = p:newio(fd, HANDLER_TYPE_TCP, ctx)
+	local io = p:newio(fd, hdtype or HANDLER_TYPE_TCP, ctx)
 	event.add_to(io, 'open')
 	if _M.DEBUG then
 		logger.debug('tcp', 'connect', fd, addr)
@@ -226,7 +232,8 @@ function _M.connect(p, addr, opts)
 	return io
 end
 
-function _M.listen(p, addr, opts)
+-- ctx should be mon-managed 
+function _M.listen(p, addr, opts, hdtype, ctx)
 	local a = memory.managed_alloc_typed('pulpo_addr_t')
 	local fd = socket.stream(addr, opts, a)
 	if not fd then error('fail to create socket:'..errno.errno()) end
@@ -243,7 +250,12 @@ function _M.listen(p, addr, opts)
 		raise('syscall', 'listen', fd)
 	end
 	logger.debug('tcp', 'listen', fd, addr)
-	return p:newio(fd, HANDLER_TYPE_TCP_LISTENER, opts and socket.table2sockopt(opts, true) or nil)
+	if ctx then
+		return p:newio(fd, hdtype or HANDLER_TYPE_TCP_LISTENER, ctx)		
+	else
+		ctx = opts and socket.table2sockopt(opts, true) or nil
+		return p:newio(fd, hdtype or HANDLER_TYPE_TCP_LISTENER, ctx)
+	end
 end
 
 return _M

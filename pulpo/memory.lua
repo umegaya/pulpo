@@ -65,6 +65,14 @@ function _M.strdup(str)
 	end
 end
 
+function _M.dup(ct, src, sz)
+	local p = _M.alloc_typed(ct, sz)
+	if p then
+		C.memmove(p, src, ffi.sizeof(ct) * sz)
+	end
+	return p
+end
+
 function _M.realloc(p, sz)
 	--logger.info('reallo from', debug.traceback())
 	local p = ffi.gc(C.realloc(p, sz), nil)
@@ -104,6 +112,10 @@ end
 
 function _M.move(dst, src, sz)
 	return C.memmove(dst, src, sz)
+end
+
+function _M.fill(dst, sz, fill)
+	ffi.fill(dst, sz, fill)
 end
 
 function _M.cmp(dst, src, sz)

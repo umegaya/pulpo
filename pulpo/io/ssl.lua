@@ -19,7 +19,7 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 	"SSL_use_PrivateKey_file", "SSL_use_certificate_file", 
 	"ERR_error_string", "ERR_get_error", "ERR_print_errors_fp", 
 
-	"pulpo_ssl_manager_t", "pulpo_ssl_option_t", "pulpo_ssl_context_t",
+	"pulpo_ssl_manager_t", "pulpo_ssl_server_context_t", "pulpo_ssl_context_t",
 }, {
 	"SSL_CB_CONNECT_EXIT", "SSL_ERROR_SSL", "SSL_ERROR_WANT_READ", "SSL_ERROR_WANT_WRITE", "SSL_ERROR_SYSCALL",
 	"SSL_FILETYPE_PEM", 
@@ -35,10 +35,10 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 		SSL_CTX		*ssl_ctx;
 		char 		*pubkey, *privkey;
 	} pulpo_ssl_manager_t;
-	typedef struct pulpo_ssl_server_option {
+	typedef struct pulpo_ssl_server_context {
 		pulpo_ssl_manager_t *ssl_manager;
 		pulpo_sockopt_t 	*sockopts;
-	} pulpo_ssl_option_t;
+	} pulpo_ssl_server_context_t;
 ]])
 
 --> exception
@@ -219,8 +219,8 @@ local function ssl_connect(io)
 	return true
 end
 
-local function ssl_server_socket(p, fd, ctx)
-	return p:newio(fd, HANDLER_TYPE_SSL, ctx)	
+local function ssl_server_socket(p, fd, ctx, hdtype)
+	return p:newio(fd, hdtype or HANDLER_TYPE_SSL, ctx)	
 end
 
 
@@ -241,6 +241,7 @@ local function ssl_read(io, ptr, len)
 	end
 	return n
 end
+_M.rawread = ssl_read
 
 local function ssl_write(io, ptr, len)
 ::retry::
@@ -252,7 +253,27 @@ local function ssl_write(io, ptr, len)
 	return n
 end
 
-local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
+local function ssl_writev(io, vec, len)
+::retry::
+	local s = ""
+	for i=0,len-1 do
+		s = s .. ffi.string(vec[i].iov_base, vec[i].iov_len)
+	end
+	if #s > 0 then
+		local n = ssl.SSL_writev(io:ctx('pulpo_ssl_context_t*').ssl, s, #s)
+		if n < 0 then
+			ssl_wait_io(io, n)
+			goto retry
+		end
+		return n
+	else
+		return 0
+	end
+end
+_M.writev = ssl_writev
+
+
+local function ssl_accept_sub(io, fd, sslm, ctx, sslp, hdtype)
 	if _M.debug then
 		sslp.info_callback = ssl_info_callback_cdata
 	end
@@ -263,7 +284,7 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 		raise("SSL", "SSL_use_PrivateKey_file fail")
 	end
 	ssl.SSL_set_fd(sslp, fd)
-	local cio = ssl_server_socket(io.p, fd, ctx)
+	local cio = ssl_server_socket(io.p, fd, ctx, hdtype)
 	local n = ssl.SSL_accept(sslp)
 	if n < 0 then
 		ssl_wait_io(cio, n)
@@ -274,8 +295,8 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 	end
 	return cio
 end
-local function ssl_accept(io)
-	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
+local function ssl_accept(io, hdtype, _ctx)
+	local ctx = _ctx and ffi.cast('pulpo_ssl_context_t *', _ctx) or memory.alloc_typed('pulpo_ssl_context_t')
 	ctx.addr:init()
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
 ::retry::
@@ -291,7 +312,7 @@ local function ssl_accept(io)
 			raise("syscall", "accept", eno, io:nfd())
 		end
 	else
-		local opts = io:ctx('pulpo_ssl_option_t*')
+		local opts = io:ctx('pulpo_ssl_server_context_t*')
 		if socket.setsockopt(n, opts.sockopts) < 0 then
 			C.close(n)
 			raise("syscall", "setsockopt", eno, n)
@@ -304,7 +325,7 @@ local function ssl_accept(io)
 		end
 		ctx.ssl = sslp
 		ctx.state = STATE.CONNECTING
-		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp)
+		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp, hdtype)
 		ctx.state = STATE.CONNECTED
 		if not ok then 
 			logger.error('accept error:', cio)
@@ -333,7 +354,7 @@ local function ssl_addr(io)
 	return io:ctx('pulpo_ssl_context_t*').addr
 end
 
-HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addr)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addr, ssl_writev)
 HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
@@ -410,7 +431,7 @@ function _M.listen(p, addr, opts)
 		raise('syscall', 'listen', fd)
 	end
 	logger.debug('ssl listen:', fd, addr)
-	popts = memory.alloc_fill_typed('pulpo_ssl_option_t')
+	popts = memory.alloc_fill_typed('pulpo_ssl_server_context_t')
 	popts.ssl_manager = opts.ssl_manager or ssl_manager_server
 	popts.sockopts = opts.sockopts or nil
 	return p:newio(fd, HANDLER_TYPE_SSL_LISTENER, popts)
