@@ -27,6 +27,7 @@ pulpo.run({
 				local verb, path, hds, b, blen = req:payload()
 				assert(verb == "POST" and path == "/rest/api")
 				assert(ffi.string(b, blen) == "name1=value1&name2=value2")
+				req:fin()
 				--print(b, blen)
 				fd:write(msg, #msg)
 			end, _fd)	

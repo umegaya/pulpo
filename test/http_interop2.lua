@@ -26,6 +26,7 @@ pulpo.run({
 		assert(status == 302)
 		assert(headers:getstr("Server"):match("^GFE"))
 		assert(headers:getstr("Location"):match("^http://www.google%.co%.jp/%?"))
+		resp:fin()
 		print('graceful stop')
 		pulpo.stop()
 	end)
