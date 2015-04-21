@@ -295,8 +295,9 @@ end
 function http_context_mt:read_response(io)
 	local r 
 ::retry::
+	--print('start resp read')
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
-	--π('end resp read', r, '['..ffi.string(self.buffer, r)..']')
+	--print('end resp read', r, '['..ffi.string(self.buffer, r)..']')
 	local prevbuflen = self.ofs
 	if r then
 		self.ofs = self.ofs + r
@@ -368,17 +369,19 @@ local function set_vector_to_str(iovector, idx, v, vlen)
 	iovector.used = iovector.used + 1
 end
 local function make_request(header, body, blen)
-	local idx
+	local idx = 1
 	local vec = new_vec()
 	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
 	set_vector_to_str(vec, 0, header[1])
-	if not header[CONTENT_LENGTH] then
-		header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
+	if body and blen then
+		if not header[CONTENT_LENGTH] then
+			header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
+		end
+		set_vector_to_str(vec, idx, CONTENT_LENGTH)
+		set_vector_to_str(vec, idx + 1, HEADER_SEP)
+		set_vector_to_str(vec, idx + 2, header[CONTENT_LENGTH])
+		idx = idx + 3
 	end
-	set_vector_to_str(vec, 1, CONTENT_LENGTH)
-	set_vector_to_str(vec, 2, HEADER_SEP)
-	set_vector_to_str(vec, 3, header[CONTENT_LENGTH])
-	idx = 4
 	for k,v in pairs(header) do
 		if type(k) == 'string' and (k ~= CONTENT_LENGTH) then
 			set_vector_to_str(vec, idx, k)
@@ -389,7 +392,9 @@ local function make_request(header, body, blen)
 		end
 	end
 	set_vector_to_str(vec, idx, CRLF)
-	set_vector_to_str(vec, idx + 1, body, blen)
+	if body and blen then
+		set_vector_to_str(vec, idx + 1, body, blen)
+	end
 	return vec
 end
 local function make_response(header, body, blen)
@@ -439,6 +444,10 @@ local function http_server_read(io)
 end
 
 local function http_write(io, body, len, header)
+	if type(body) == 'table' then
+		header = body
+		body = nil
+	end
 	local ctx = io:ctx('pulpo_http_context_t*')
 	local vec = make_request(header, body, len)
 	local r = ctx:writev(io, vec.list, vec.used)

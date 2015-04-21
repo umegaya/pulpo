@@ -146,6 +146,10 @@ end
 
 local function tcp_writev(io, vec, vlen)
 ::retry::
+--[[for i=0,tonumber(vlen)-1 do
+	local v = vec[i]
+	logger.notice('vec', i, ("[%q]"):format(ffi.string(v.iov_base, v.iov_len)))
+end]]
 	local n = C.writev(io:fd(), vec, vlen)
 	if n < 0 then
 		on_write_error(io, n)
@@ -219,6 +223,7 @@ HANDLER_TYPE_TCP_LISTENER = poller.add_handler("tcp_listen", tcp_accept, nil, tc
 function _M.connect(p, addr, opts, hdtype, ctx)
 	ctx = ctx and ffi.cast('pulpo_tcp_context_t*', ctx) or memory.alloc_typed('pulpo_tcp_context_t')
 	ctx.state = STATE.INIT
+	-- ctx.addr is reference of original memory block, so it will modify ctx.addr's value.
 	local fd = socket.stream(addr, opts, ctx.addr)
 	if not fd then 
 		raise('syscall', 'socket', 'create stream') 
