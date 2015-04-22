@@ -106,6 +106,7 @@ end
 
 function _M.listen(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_https_server_context_t')
+	ctx.ssl_server.sockopts = socket.table2sockopt(opts, true)
 	return ssl.listen(p, addr, opts, HANDLER_TYPE_HTTPS_LISTENER, ctx)
 end
 

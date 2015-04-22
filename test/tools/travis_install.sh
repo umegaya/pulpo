@@ -71,4 +71,10 @@ autoconf && ./configure && make && $SUDO make install
 popd
 popd
 
-
+HTTP_PARSER_VERSION=umegaya/feature/so
+pushd tmp
+git clone https://github.com/umegaya/picohttpparser --branch $HTTP_PARSER_VERSION
+pushd picohttpparser
+make so && objcopy -S libpicohttpparser.so && make install_so
+popd
+popd

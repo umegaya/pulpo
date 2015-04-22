@@ -17,6 +17,11 @@ pulpo.run({
 		pubkey = "./test/certs/public.key",
 		privkey = "./test/certs/private.key",
 	})
+	local proc = require 'pulpo.io.process'
+	local clock = pulpo.evloop.clock.new(0.05, 10)
+	proc.initialize(function (dur)
+		return clock:alarm(dur)
+	end)
 	local https = pulpo.evloop.io.https
 	local process = pulpo.evloop.io.process
 
@@ -41,7 +46,7 @@ pulpo.run({
 		end
 	end)
 	tentacle(function ()
-		local exitcode, out = process.execute('curl -k -d "name1=value1&name2=value2" https://127.0.0.1:8008/rest/api')
+		local exitcode, out = process.execute('exec curl -k -d "name1=value1&name2=value2" https://127.0.0.1:8008/rest/api')
 		assert(out == "hello world")
 		print('graceful stop')
 		pulpo.stop()

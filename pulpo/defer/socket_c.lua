@@ -28,7 +28,6 @@ local CHEADER = [[
 	#include <fcntl.h>
 	#include <ifaddrs.h>
 	#include <net/if.h>
-	#include <sys/wait.h>
 	typedef union pulpo_bytes_op {
 		unsigned char p[0];
 		unsigned short s;
@@ -89,10 +88,6 @@ local ffi_state = loader.load("socket.lua", CDECLS, {
 		"IP_MULTICAST_IF", 
 		"IP_MULTICAST_TTL",
 		"IP_ADD_MEMBERSHIP", 
-	"WIFEXITED",
-	"WTERMSIG",
-	"WEXITSTATUS",
-	"WIFSIGNALED", 
 	nice_to_have = {
 		"SO_REUSEPORT",
 	}, 
@@ -138,23 +133,6 @@ local AI_NUMERICHOST = ffi_state.defs.AI_NUMERICHOST
 local IFNAMSIZ = ffi_state.defs.IFNAMSIZ
 
 local SIOCGIFADDR = ffi_state.defs.SIOCGIFADDR
-
--- nasty hack for support macro for union wait
-if ffi.os == "OSX" then
-	ffi_state:cdef [[
-		#undef _W_INT
-		#define _W_INT(x) (x)
-	]]
-elseif ffi.os == "Linux" then
-	ffi_state:cdef [[
-		#undef __WAIT_INT
-		#define __WAIT_INT(x) (x)
-	]]
-end
-local WIFEXITED = ffi_state.defs.WIFEXITED
-local WTERMSIG = ffi_state.defs.WTERMSIG
-local WEXITSTATUS = ffi_state.defs.WEXITSTATUS
-local WIFSIGNALED = ffi_state.defs.WIFSIGNALED
 
 -- TODO : support PDP_ENDIAN (but which architecture uses this endian?)
 local LITTLE_ENDIAN
@@ -447,7 +425,7 @@ function _M.setsockopt(fd, opts)
 			logger.error("fcntl fail (set nonblock) errno=", ffi.errno())
 			return -1
 		end
-		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')')
+		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')', O_NONBLOCK)
 	end
 	if opts.timeout > 0 then
 		local timeout = util.sec2timeval(tonumber(opts.timeout))
@@ -585,12 +563,6 @@ end
 
 function _M.dup(sock)
 	return C.dup(sock)
-end
-
-function _M.parse_status(st)
-	local code = WEXITSTATUS(st)
-	local sig = WTERMSIG(st)
-	return code, sig	
 end
 
 return _M

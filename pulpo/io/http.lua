@@ -339,8 +339,9 @@ end
 function http_context_mt:read_request(io)
 	local r, ret
 ::retry::
+	--print(io:fd(), 'req read start')
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
-	-- print(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
+	--print(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
 	local prevbuflen = self.ofs
 	if r then
 		self.ofs = self.ofs + r
@@ -490,7 +491,7 @@ function _M.connect(p, addr, opts)
 end
 
 function _M.listen(p, addr, opts)
-	local ctx = memory.alloc_typed('pulpo_http_server_context_t')
+	local ctx = socket.table2sockopt(opts, true)
 	return tcp.listen(p, addr, opts, HANDLER_TYPE_HTTP_LISTENER, ctx)
 end
 

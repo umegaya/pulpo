@@ -1,14 +1,18 @@
 local ffi = require 'ffiex.init'
 local poller = require 'pulpo.poller'
 local util = require 'pulpo.util'
+local loader = require 'pulpo.loader'
 local memory = require 'pulpo.memory'
 local errno = require 'pulpo.errno'
 local event = require 'pulpo.event'
 local socket = require 'pulpo.socket'
 local raise = (require 'pulpo.exception').raise
+local pulpo = require 'pulpo.init'
 
 local C = ffi.C
 local _M = {}
+
+local alarm_factory
 
 local HANDLER_TYPE_PROCESS
 --> cdef
@@ -21,11 +25,42 @@ local ECONNRESET = errno.ECONNRESET
 local EINPROGRESS = errno.EINPROGRESS
 local EINVAL = errno.EINVAL
 
+local ffi_state = loader.load("process.lua", {}, {
+	"WIFEXITED", "WTERMSIG", "WEXITSTATUS", "WIFSIGNALED", 
+}, nil, [[
+	#include <sys/wait.h>
+]])
+
+-- nasty hack for support macro for union wait
+if ffi.os == "OSX" then
+	ffi_state:cdef [[
+		#undef _W_INT
+		#define _W_INT(x) (x)
+	]]
+elseif ffi.os == "Linux" then
+	ffi_state:cdef [[
+		#undef __WAIT_INT
+		#define __WAIT_INT(x) (x)
+	]]
+end
+local WIFEXITED = ffi_state.defs.WIFEXITED
+local WTERMSIG = ffi_state.defs.WTERMSIG
+local WEXITSTATUS = ffi_state.defs.WEXITSTATUS
+local WIFSIGNALED = ffi_state.defs.WIFSIGNALED
+
 ffi.cdef [[
 typedef struct pulpo_process_context {
 	FILE *fp;
 } pulpo_process_context_t;
+int feof(FILE *stream);
 ]]
+
+--> helpers
+local function parse_status(st)
+	local code = WEXITSTATUS(st)
+	local sig = WTERMSIG(st)
+	return code, sig	
+end
 
 --> handlers
 local function process_read(io, ptr, len)
@@ -37,11 +72,12 @@ local function process_read(io, ptr, len)
 			local st = C.pclose(ctx.fp)
 			ctx.fp = ffi.NULL
 			io:close('remote')
-			return nil, socket.parse_status(st)
+			return nil, parse_status(st)
 		end
 		local eno = errno.errno()
 		if eno == EAGAIN or eno == EWOULDBLOCK then
-			if not io:wait_read() then
+			local tp, obj = event.wait(nil, alarm_factory(0.1), io:event('read'))
+			if tp == 'destroy' then
 				return nil
 			end
 			goto retry
@@ -123,6 +159,10 @@ function _M.execute(p, cmd)
 			str = str .. ffi.string(buf, ok)
 		end
 	end
+end
+
+function _M.initialize(af)
+	alarm_factory = af
 end
 
 return _M

@@ -14,6 +14,11 @@ pulpo.run({
 	local poller = require 'pulpo.poller'
 	local util = require 'pulpo.util'
 	local signal = require 'pulpo.signal'
+	local proc = require 'pulpo.io.process'
+	local clock = pulpo.evloop.clock.new(0.05, 10)
+	proc.initialize(function (dur)
+		return clock:alarm(dur)
+	end)
 	local process = pulpo.evloop.io.process
 
 	local p1 = process.open(("%s test/tools/process_success.lua"):format(util.luajit_cmdline()))

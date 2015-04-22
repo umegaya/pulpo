@@ -47,10 +47,10 @@ tentacle.new(function ()
 		tentacle(function (fd)
 			-- print('sub tentacle:', fd:fd())
 			local i = 0
-			-- print('read start')
 			while i < NITER do
+				-- print('read start', i)
 				local req = fd:read()
-				-- print('read end', len)
+				-- print('read end', i)
 				local verb, path, hds, b, blen = req:payload()
 				assert(verb == "POST" and path == "/hoge")
 				--print(b, blen)
@@ -74,9 +74,9 @@ for cnt=1,NCLIENTS,1 do
 		local s = http.connect(p, '127.0.0.1:8008')
 		local i = 0
 		while i < NITER do
-		--print('start write:', cnt)
+		-- print('start write:', cnt)
 			s:write(client_msg, #client_msg, { "POST", "/hoge" })
-		--print('end write:', cnt)
+		-- print('end write:', cnt)
 			local resp = s:read()
 			local status, hds, b, blen = resp:payload()
 			assert(status == 200 and hds:getstr("Connection"):lower() == "keep-alive")

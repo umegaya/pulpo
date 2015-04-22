@@ -2,6 +2,7 @@ local thread = require 'pulpo.thread'
 local poller = require 'pulpo.poller'
 local tentacle = require 'pulpo.tentacle'
 local memory = require 'pulpo.memory'
+local util = require 'pulpo.util'
 
 local NCLIENTS = 1000
 local NITER = 100
@@ -51,7 +52,7 @@ tentacle(function ()
 	end
 end)
 
-local start = os.clock()
+local start = util.clock()
 
 local client_msg = ("hello,luact poll"):rep(16)
 for cnt=1,NCLIENTS,1 do
@@ -88,7 +89,7 @@ end
 logger.info('start', p)
 p:loop()
 
-logger.info('end', os.clock() - start, 'sec')
+logger.info('end', util.clock() - start, 'sec')
 pulpo_assert(limit <= finish and limit <= cfinish, "not all client/server finished but poller terminated")
 poller.finalize()
 return true
