@@ -26,9 +26,14 @@ pulpo.run({
 		})
 		local resp = s:read()
 		local status, headers, b, blen = resp:payload()
-		assert(status == 302)
-		assert(headers:getstr("Server"):match("^GFE"))
-		assert(headers:getstr("Location"):match("^https://www.google%.co%.jp/%?"))
+		if headers:getstr("Server") == "gws" then
+			assert(status == 200)
+			assert(headers:getstr("Alternate-Protocol"):match('quic'))
+		else
+			assert(status == 302)
+			assert(headers:getstr("Server"):match("^GFE"))
+			assert(headers:getstr("Location"):match("^http://www.google%.co%.jp/%?"))
+		end
 		resp:fin()
 		print('graceful stop')
 		pulpo.stop()

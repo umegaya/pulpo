@@ -167,6 +167,11 @@ local function make_response(header, body, blen)
 	set_vector_to_str(vec, idx + 1, body, blen)
 	return vec
 end
+local function debuglog(...)
+	if _M.DEBUG then
+		logger.warn(...)
+	end
+end
 
 
 --> pulpo_http_request cdata
@@ -249,6 +254,8 @@ function http_context_mt:get_content_length_and_encoding(hd, hdlen)
 	for i=0, tonumber(hdlen)-1 do
 		local h = hd[i]
 		local name = ffi.string(h.name, h.name_len)
+		local val = ffi.string(h.value, h.value_len)
+		debuglog('header', name, val)
 		if name:lower() == TRANSFER_ENCODING:lower() then
 			encode = ffi.string(h.value, h.value_len)
 		end
@@ -259,7 +266,7 @@ function http_context_mt:get_content_length_and_encoding(hd, hdlen)
 			break
 		end
 	end
-	return len, encode
+	return len or 4096, encode
 end
 function http_context_mt:parse_body(io, obj, headers, read_start)
 	local ret
@@ -281,40 +288,35 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 		memory.fill(self.decoder, ffi.sizeof(self.decoder[0]))
 		self.decoder[0].consume_trailer = 1
 ::chunked_retry::
+		if body_buf_used >= body_buf_len then
+			local tmp = memory.realloc_typed('char', body, body_buf_len * 2)
+			if not tmp then
+				exception.raise('malloc', 'char', body_buf_len * 2)
+			end
+			body = tmp
+			body_buf_len = body_buf_len * 2
+		end
+		ret = nil
 		if body_ofs < body_buf_used then
-			self.body_len[0] = body_buf_used - body_ofs
-			ret = http_parser.phr_decode_chunked(self.decoder, body + body_ofs, self.body_len)
+			obj.body_len[0] = body_buf_used - body_ofs
+			ret = http_parser.phr_decode_chunked(self.decoder, body + body_ofs, obj.body_len)
 			if ret == -1 then
 				exception.raise('http', 'malform request', ffi.string(body, body_ofs))
 			end
-			body_ofs = body_ofs + self.body_len[0]
-			if ret == -2 then
-				goto chunked_retry
-			else
-				if body_ofs < body_buf_used then -- last read does not consume all buffer
-					-- header of next request also read
-					self.ofs = body_buf_used - body_ofs
-					local newlen = self.len
-					while self.ofs >= newlen do
-						newlen = newlen * 2
-					end
-					if newlen > self.len then
-						local tmp = memory.realloc_typed('char', self.buffer, newlen)
-						if not tmp then
-							exception.raise('malloc', 'char', newlen)
-						end
-						self.buffer = tmp
-						self.len = newlen
-					end
-					memory.copy(self.buffer, body + body_ofs, self.ofs)
-				end
+			body_ofs = body_ofs + obj.body_len[0]
+			if ret ~= -2 then
+				--print('parse finished', ret, body_ofs, body_buf_used)
 			end
-		else
+		end
+		-- no buff to process or not enought buffer received
+		if (not ret) or (ret == -2) then
+			debuglog(ret, body_buf_len, body_ofs)
 			ret = self:read(io, body + body_ofs, body_buf_len - body_ofs)
 			if not ret then
 				obj:fin()
 				return nil
 			end
+			debuglog('newly read:', ret, ffi.string(body + body_ofs, ret))
 			body_buf_used = body_ofs + ret
 			goto chunked_retry
 		end

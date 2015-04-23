@@ -46,7 +46,7 @@ pulpo.run({
 		end
 	end)
 	tentacle(function ()
-		local exitcode, out = process.execute('exec curl -k -d "name1=value1&name2=value2" https://127.0.0.1:8008/rest/api')
+		local exitcode, out = process.execute('curl --insecure -d "name1=value1&name2=value2" https://127.0.0.1:8008/rest/api')
 		assert(out == "hello world")
 		print('graceful stop')
 		pulpo.stop()

@@ -21,6 +21,7 @@ branches:
 
 install:
   - sudo apt-get install luarocks
+  - sudo apt-get install curl
 
 notifications:
   recipients:
