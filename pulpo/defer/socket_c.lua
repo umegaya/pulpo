@@ -11,12 +11,13 @@ local _M = (require 'pulpo.package').module('pulpo.defer.socket_c')
 local CDECLS = {
 	"socket", "connect", "listen", "setsockopt", "bind", "accept", 
 	"recv", "send", "recvfrom", "sendto", "close", "getaddrinfo", "freeaddrinfo", "inet_ntop", "inet_aton", 
-	"fcntl", "dup", "read", "write", "writev", "sendfile", 
+	"fcntl", "dup", "read", "write", "writev", "sendfile", "sendmsg", "recvmsg",
 	"getifaddrs", "freeifaddrs", "getsockname", "getpeername",
-	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t",
-	"struct ifreq", "struct ip_mreq", "ioctl",
+	"struct iovec", "pulpo_bytes_op_t", "pulpo_sockopt_t", "pulpo_addr_t", "pulpo_ifaddrs_t", "pulpo_iovec_t",
+	"struct ifreq", "struct ip_mreq", "struct msghdr", "ioctl", "popen", "pclose", 
 }
 local CHEADER = [[
+	#include <stdio.h>
 	#include <sys/socket.h>
 	#include <sys/uio.h>
 	#include <sys/ioctl.h>
@@ -57,6 +58,7 @@ local CHEADER = [[
 		struct ifaddrs *mem;
 		struct ifaddrs *data;
 	} pulpo_ifaddrs_t;
+	typedef struct iovec pulpo_iovec_t;
 ]]
 if ffi.os == "Linux" then
 	-- enum declaration required
@@ -176,6 +178,25 @@ end
 function addr_index:init()
 	self.len[0] = (ffi.sizeof('pulpo_addr_t') - ffi.sizeof('socklen_t'))
 end
+function addr_index:as_machine_id()
+	return _M.numeric_ipv4_addr_from_sockaddr(self.p)
+end
+function addr_index:port()
+	local af = self.p[0].sa_family
+	if af == AF_INET then
+		return _M.ntohs(tonumber(self.addr4.sin_port))
+	elseif af == AF_INET6 then
+		return _M.ntohs(tonumber(self.addr6.sin6_port))
+	end
+end
+function addr_index:set_by_machine_id(machine_id, port)
+	local sa = self.addr4
+	sa.sin_addr.s_addr = machine_id
+	sa.sin_port = _M.htons(port)
+	sa.sin_family = AF_INET
+	ffi.fill(sa.sin_zero, 8)
+	self.len[0] = ffi.sizeof('struct sockaddr_in')
+end
 function addr_index:dump()
 	io.write('buffer:len:')
 	io.write(self.len[0])
@@ -219,65 +240,6 @@ exception.define('pipe', {
 		return ('remote peer closed')
 	end,
 })
-
--- returns true if litten endian arch, otherwise big endian. 
--- now this framework does not support pdp endian.
-function _M.little_endian()
-	return LITTLE_ENDIAN
-end
-
---> htons/htonl/ntohs/ntohl 
---- borrow from http://svn.fonosfera.org/fon-ng/trunk/luci/libs/core/luasrc/ip.lua
-
---- Convert given short value to network byte order on little endian hosts
--- @param x	Unsigned integer value between 0x0000 and 0xFFFF
--- @return	Byte-swapped value
--- @see		htonl
--- @see		ntohs
-function _M.htons(x)
-	if LITTLE_ENDIAN then
-		return bit.bor(
-			bit.rshift( x, 8 ),
-			bit.band( bit.lshift( x, 8 ), 0xFF00 )
-		)
-	else
-		return x
-	end
-end
-
---- Convert given long value to network byte order on little endian hosts
--- @param x	Unsigned integer value between 0x00000000 and 0xFFFFFFFF
--- @return	Byte-swapped value
--- @see		htons
--- @see		ntohl
-function _M.htonl(x)
-	if LITTLE_ENDIAN then
-		return bit.bor(
-			bit.lshift( _M.htons( bit.band( x, 0xFFFF ) ), 16 ),
-			_M.htons( bit.rshift( x, 16 ) )
-		)
-	else
-		return x
-	end
-end
-
---- Convert given short value to host byte order on little endian hosts
--- @class	function
--- @name	ntohs
--- @param x	Unsigned integer value between 0x0000 and 0xFFFF
--- @return	Byte-swapped value
--- @see		htonl
--- @see		ntohs
-_M.ntohs = _M.htons
-
---- Convert given short value to host byte order on little endian hosts
--- @class	function
--- @name	ntohl
--- @param x	Unsigned integer value between 0x00000000 and 0xFFFFFFFF
--- @return	Byte-swapped value
--- @see		htons
--- @see		ntohl
-_M.ntohl = _M.htonl
 
 --> misc network function
 --> may seems functions not to be reentrant, but actually when luact runs with multithread mode, 
@@ -350,11 +312,11 @@ function _M.inet_namebyfd(fd, dst, len)
 end
 local sockaddr_buf = ffi.new('struct sockaddr_in[1]')
 function _M.numeric_ipv4_addr_from_sockaddr(sa)
-	return _M.htonl(ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr)
+	return ffi.cast('struct sockaddr_in*', sa).sin_addr.s_addr
 end
 function _M.numeric_ipv4_addr_by_host(host)
 	if _M.inet_hostbyname(host, sockaddr_buf) >= 0 then
-		return _M.htonl(ffi.cast('struct sockaddr_in*', sockaddr_buf).sin_addr.s_addr)
+		return ffi.cast('struct sockaddr_in*', sockaddr_buf).sin_addr.s_addr
 	else
 		exception.raise('invalid', 'address', host)
 	end
@@ -433,8 +395,7 @@ function _M.table2sockopt(opts, alloc)
 		ffi.fill(opts_work_buffer, ffi.sizeof('pulpo_sockopt_t'))
 		return opts_work_buffer		
 	elseif type(opts) == "cdata" then
-		buf = opts
-		ffi.fill(buf, ffi.sizeof('pulpo_sockopt_t'))
+		return opts
 	elseif alloc then
 		buf = memory.alloc_fill_typed('pulpo_sockopt_t')
 	else
@@ -464,7 +425,7 @@ function _M.setsockopt(fd, opts)
 			logger.error("fcntl fail (set nonblock) errno=", ffi.errno())
 			return -1
 		end
-		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')')
+		-- print('fd = ' .. fd, 'set as non block('..C.fcntl(fd, F_GETFL)..')', O_NONBLOCK)
 	end
 	if opts.timeout > 0 then
 		local timeout = util.sec2timeval(tonumber(opts.timeout))
@@ -478,14 +439,14 @@ function _M.setsockopt(fd, opts)
 		end
 	end
 	if opts.wblen.data > 0 then
-		logger.info(fd, "set wblen to", opts.wblen.data);
+		logger.debug(fd, "set wblen to", opts.wblen.data);
 		if C.setsockopt(fd, SOL_SOCKET, SO_SNDBUF, opts.wblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (sndbuf) errno=", errno);
 			return -4
 		end
 	end
 	if opts.rblen.data > 0 then
-		logger.info(fd, "set rblen to", opts.rblen.data);
+		logger.debug(fd, "set rblen to", opts.rblen.data);
 		if C.setsockopt(fd, SOL_SOCKET, SO_RCVBUF, opts.rblen.p, ffi.sizeof('int')) < 0 then
 			logger.error("setsockopt (rcvbuf) errno=", errno);
 			return -5

@@ -1,7 +1,7 @@
 language: lua
 
 env:
-  #- LUAJIT_VERSION="v2.1" TEST_BIN="luajit-2.1.0-alpha test/bootstrap/test.lua" PRELOAD="libpthread.so.0"
+  - LUAJIT_VERSION="v2.1" TEST_BIN="luajit-2.1.0-alpha -e require('jit.opt').start('minstitch=10000') test/bootstrap/test.lua travis" PRELOAD="libpthread.so.0"
   - LUAJIT_VERSION="master" TEST_BIN="luajit test/bootstrap/test.lua travis" PRELOAD="/usr/local/lib/libjemalloc.so.1 libpthread.so.0"
   - LUAJIT_VERSION="master" TEST_BIN="bash test/bootstrap/thread_test.sh 30" PRELOAD="libpthread.so.0"
 
@@ -21,6 +21,7 @@ branches:
 
 install:
   - sudo apt-get install luarocks
+  - sudo apt-get install curl
 
 notifications:
   recipients:

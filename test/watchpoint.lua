@@ -3,7 +3,7 @@ if ffi.os ~= "Linux" then
 	return true
 end
 local thread = require 'pulpo.thread'
-thread.initialize({ cache_dir = "/tmp/pulpo" })
+thread.initialize({ datadir = "/tmp/pulpo" })
 
 local wp = require 'pulpo.debug.watchpoint'
 

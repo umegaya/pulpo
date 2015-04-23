@@ -35,7 +35,6 @@ $SUDO ./configure && make DISABLE_STATIC=1 && make install
 $SUDO cp $TCC_LIB_NAME /usr/local/lib/
 $SUDO ln -s /usr/local/lib/$TCC_LIB_NAME /usr/local/lib/$TCC_LIB
 $SUDO sh -c "echo '/usr/local/lib' > /etc/ld.so.conf.d/tcc.conf"
-$SUDO ldconfig
 popd
 popd
 fi
@@ -71,4 +70,12 @@ autoconf && ./configure && make && $SUDO make install
 popd
 popd
 
+HTTP_PARSER_VERSION=umegaya/feature/so
+pushd tmp
+git clone https://github.com/umegaya/picohttpparser --branch $HTTP_PARSER_VERSION
+pushd picohttpparser
+$SUDO make so && objcopy -S libpicohttpparser.so && make install_so
+popd
+popd
 
+$SUDO ldconfig

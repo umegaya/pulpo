@@ -1,7 +1,7 @@
 local ffi = require 'ffiex.init'
 -- ffi.__DEBUG_CDEF__ = true
 local pulpo = (require 'pulpo.init').initialize({
-	cache_dir = '/tmp/pulpo'
+	datadir = '/tmp/pulpo'
 })
 
 local event = pulpo.event

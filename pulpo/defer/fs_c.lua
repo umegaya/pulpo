@@ -175,6 +175,29 @@ function _M.opendir(path)
 	p.dir = C.opendir(path)
 	return p.dir ~= ffi.NULL and p or nil
 end
+function _M.scan(path, ignore_fn, fn, ...)
+	local dir = _M.opendir(path)
+	if not dir then return end
+	if fn(path, ...) then
+		return true
+	end
+	for file in dir:iter() do
+		if not file:match('^%.+$') then
+			file = path.._M.PATH_SEPS..file
+			if not (ignore_fn and ignore_fn(file)) then
+				if _M.is_file(file) then
+					if fn(file, ...) then
+						return true
+					end
+				elseif _M.is_dir(file) then
+					if _M.scan(file, ignore_fn, fn, ...) then
+						return true
+					end
+				end
+			end
+		end
+	end
+end
 function _M.mkdir(path, readonly)
 	local tmp
 	for name in path:gmatch('[^/¥]+') do
@@ -232,7 +255,7 @@ function _M.mode(modestr)
 	return ffi.new('uint16_t', tonumber(modestr, "8"))
 end
 function _M.open(path, flags, mode)
-	local fd = C.open(path, flags, mode or O_RDWR)
+	local fd = C.open(path, flags, mode or _M.mode("0755"))
 	if fd <= 0 then
 		exception.raise('syscall', 'open', path)
 	end

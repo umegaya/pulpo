@@ -158,7 +158,7 @@ end
 
 -- wait one of the events specified in ..., is emitted.
 -- you can skip some unnecessary kind of event by filtering with *filter*
--- if filter returns true, then select returns, otherwise *select* wait for next event to be emitted.
+-- if filter returns true, then *wait* returns, otherwise *wait* wait for next event to be emitted.
 function wait_list_cancel(t, co)
 	for i=1,#t do
 		unregister_thread(t[i], co)
@@ -192,12 +192,7 @@ function _M.wait(filter, ...)
 	end
 	for i=1,#list,1 do
 		local ev = list[i]
-		if rev == ev then
-			assert(co == ev.waitq[#ev.waitq])
-			table.remove(ev.waitq)
-		else
-			unregister_thread(ev, co)
-		end
+		unregister_thread(ev, co)
 	end
 	return unpack(tmp)
 end
@@ -209,7 +204,7 @@ end
 -- if all events except *timeout*, is emitted, *join* no more wait for emitting *timeout*.
 -- if *timeout* is falsy (nil or false), *join* just wait for all other event permanently.
 -- 
--- returns array which emitted result in emit order, except result for timeout event object.
+-- returns array of emitted result in emit order, except result for timeout event object.
 -- it will be placed last of returned array.
 function _M.join(timeout, ...)
 	local co = pulpo_assert(tentacle.running(), "main thread")
@@ -251,8 +246,7 @@ function _M.join(timeout, ...)
 				local ev = list[i]
 				if rev == ev then
 					table.remove(list, i)
-					assert(co == ev.waitq[#ev.waitq])
-					table.remove(ev.waitq)
+					unregister_thread(ev, co)
 					break
 				end
 			end

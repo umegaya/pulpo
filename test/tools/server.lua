@@ -1,9 +1,12 @@
 local ffi = require 'ffiex.init'
 local pulpo = require 'pulpo.init'
 local tentacle = pulpo.tentacle
-local tcp = require 'pulpo.io.tcp'
 
 require 'test.tools.config'
+
+pulpo.initialize({
+	datadir = '/tmp/pulpo'
+})
 
 local loop = pulpo.evloop
 local tcp = loop.io.tcp

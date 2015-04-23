@@ -65,7 +65,16 @@ function _M.strdup(str)
 	end
 end
 
+function _M.dup(ct, src, sz)
+	local p = _M.alloc_typed(ct, sz)
+	if p then
+		C.memmove(p, src, ffi.sizeof(ct) * sz)
+	end
+	return p
+end
+
 function _M.realloc(p, sz)
+	--logger.info('reallo from', debug.traceback())
 	local p = ffi.gc(C.realloc(p, sz), nil)
 	return p ~= ffi.NULL and p or nil
 end
@@ -105,15 +114,53 @@ function _M.move(dst, src, sz)
 	return C.memmove(dst, src, sz)
 end
 
+function _M.fill(dst, sz, fill)
+	ffi.fill(dst, sz, fill)
+end
+
 function _M.cmp(dst, src, sz)
 	return C.memcmp(dst, src, sz) == 0
 end
 
+-- following 2 returns
+-- >0 : dst is greater
+-- <0 : src is greater
+-- =0 : equals
+function _M.rawcmp(dst, src, sz)
+	return C.memcmp(dst, src, sz)
+end
+
+function _M.rawcmp_ex(dst, dsz, src, ssz)
+	-- print('rawcmp_ex', dsz, ssz)
+	-- if not dsz then
+	-- 	print(debug.traceback())
+	-- end
+	if dsz <= 0 then -- dst is min key
+		-- unless src is min key, dst is smaller
+		return ssz <= 0 and 0 or -1
+	elseif ssz <= 0 then -- src is min key
+		-- unless dst is min key, src is smaller
+		return dsz <= 0 and 0 or 1
+	elseif dsz < ssz then
+		local r = _M.rawcmp(dst, src, dsz)
+		return r > 0 and 1 or -1 
+	elseif dsz > ssz then
+		local r = _M.rawcmp(dst, src, ssz)
+		return r >= 0 and 1 or -1
+	else
+		return _M.rawcmp(dst, src, ssz)
+	end
+end
+
 function _M.free(p)
 	if _M.DEBUG then
-		print('free:', p, debug.traceback())
+		logger.info('free:', p, debug.traceback())
 	end
 	C.free(p)
+end
+
+function _M.smart(p)
+	return ffi.gc(p, _M.free)
 end
 
 return _M

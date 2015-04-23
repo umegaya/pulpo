@@ -6,7 +6,7 @@ local memory = require 'pulpo.memory'
 local NITER = 10
 local NLISTENER = 5
 local opts = {
-	cache_dir = '/tmp/pulpo'
+	datadir = '/tmp/pulpo'
 }
 thread.initialize(opts)
 poller.initialize(opts)

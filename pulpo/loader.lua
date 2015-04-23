@@ -131,7 +131,7 @@ function _M.initialize(opts, loader_ffi_state)
 	init_ffi_state(loader_ffi_state)
 	_master = true
 	_M.cache = pulpo_assert(memory.alloc_typed('pulpo_parsed_info_t'), "fail to alloc cache")
-	local dir = (opts.cache_dir.."/cdefs")
+	local dir = (opts.datadir.."/cdefs")
 	_M.cache:init(dir)
 	_M.cache_dir = dir
 	--- create cache directory

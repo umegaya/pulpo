@@ -95,7 +95,7 @@ ffi.metatype('pulpo_linda_t', {
 						end	
 					end)
 				end, tostring(k))
-				logger.info(k, 'fds:', p.fds[0], p.fds[1])
+				logger.debug(k, 'fds:', p.fds[0], p.fds[1])
 				pio = ffi.new('pulpo_pipe_io_t')
 				pio.io[0],pio.io[1] = pipe.new(poller, p.fds, nil, opts)
 				linda_cache[k] = pio

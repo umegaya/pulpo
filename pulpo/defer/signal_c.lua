@@ -73,7 +73,7 @@ end)
 _M.original_signals = {}
 thread.register_exit_handler("signal.lua", function ()
 	for signo, sa in pairs(_M.original_signals) do
-		logger.info('rollback signal', signo)
+		logger.debug('rollback signal', signo)
 		C.sigaction(signo, sa, nil)
 		memory.free(sa)
 	end

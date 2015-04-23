@@ -19,7 +19,7 @@ local iolist = ffi.NULL
 local handlers = {}
 local handler_id_seed = 0
 local handler_names = {}
-local read_handlers, write_handlers, gc_handlers, address_handler, error_handlers = {}, {}, {}, {}, {}
+local read_handlers, write_handlers, gc_handlers, address_handlers, error_handlers = {}, {}, {}, {}, {}
 local writev_handlers, writef_handlers = {}, {}
 local HANDLER_TYPE_POLLER
 local io_index, poller_index = {}, {}
@@ -41,11 +41,11 @@ end
 function io_index.write(t, ptr, len, ...)
 	return write_handlers[t:type()](t, ptr, len, ...)
 end
-function io_index.writev(t, vec, len)
-	return writev_handlers[t:type()](t, ptr, len)
+function io_index.writev(t, vec, len, ...)
+	return writev_handlers[t:type()](t, vec, len, ...)
 end
-function io_index.writef(t, in_fd, offset_p, count)
-	return writef_handlers[t:type()](t, in_fd, offset_p, count)
+function io_index.writef(t, in_fd, offset_p, count, ...)
+	return writef_handlers[t:type()](t, in_fd, offset_p, count, ...)
 end
 function io_index.nfd(t)
 	return tonumber(t:fd())
@@ -57,10 +57,10 @@ function io_index.by(t, poller, cb)
 	return poller:add(t, cb)
 end
 function io_index.address(t)
-	return address_handler[t:type()](t)
+	return address_handlers[t:type()](t)
 end
 function io_index.close(t, reason)
-	-- logger.info("fd=", t:fd(), " closed by user")
+	-- logger.info("fd=", t:fd(), t:address(), " closed by user", debug.traceback())
 	t:fin(reason)
 end
 function io_index.__cancel(t, co)
@@ -87,17 +87,17 @@ end
 -- module body
 ---------------------------------------------------
 local function nop() end
-function _M.add_handler(name, reader, writer, gc, addr, err, writev, writef)
+function _M.add_handler(name, reader, writer, gc, addr, writev, writef, err)
 	handler_id_seed = handler_id_seed + 1
 	read_handlers[handler_id_seed] = reader or nop
 	write_handlers[handler_id_seed] = writer or nop
 	writev_handlers[handler_id_seed] = writev or nop
 	writef_handlers[handler_id_seed] = writef or nop
 	gc_handlers[handler_id_seed] = gc or nop
-	address_handler[handler_id_seed] = addr or nop
+	address_handlers[handler_id_seed] = addr or nop
 	error_handlers[handler_id_seed] = err or nop
 	handler_names[handler_id_seed] = name
-	logger.info('add_handler:', name, '=>', handler_id_seed)
+	logger.debug('add_handler:', name, '=>', handler_id_seed)
 	return handler_id_seed
 end
 

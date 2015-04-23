@@ -93,7 +93,7 @@ function _M.new(p, start, intv, ctx)
 		C.close(fd)
 		raise('poller', 'fail to add timer', fd, errno.errno())
 	end
-	logger.info('timer:', fd, start, intv)
+	logger.debug('timer:', fd, start, intv)
 	return p:newio(fd, HANDLER_TYPE_TIMER, ctx)
 end
 
@@ -157,7 +157,7 @@ function _M.new(p, start, intv, ctx)
 		C.close(fd)
 		raise('syscall', 'timerfd_settime', fd)
 	end
-	logger.info('timer:', fd, start, intv, HANDLER_TYPE_TIMER)
+	logger.debug('timer:', fd, start, intv, HANDLER_TYPE_TIMER)
 	
 	return p:newio(fd, HANDLER_TYPE_TIMER, ctx)
 end

@@ -81,7 +81,7 @@ function _M.require(mod)
 	local loaded = _M.add_initializer(mod, function ()
 		debuglog('deferred_require:', mod, pseudo_M)
 		original_require(mod)
-		pseudo_modules[mod] = nil
+		debuglog('end deferred_require:', mod, pseudo_M)
 	end)
 	if loaded then
 		return pseudo_M

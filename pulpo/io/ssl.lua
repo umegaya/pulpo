@@ -19,9 +19,10 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 	"SSL_use_PrivateKey_file", "SSL_use_certificate_file", 
 	"ERR_error_string", "ERR_get_error", "ERR_print_errors_fp", 
 
-	"pulpo_ssl_manager_t", "pulpo_ssl_option_t", "pulpo_ssl_context_t",
+	"pulpo_ssl_manager_t", "pulpo_ssl_server_context_t", "pulpo_ssl_context_t",
 }, {
-	"SSL_CB_CONNECT_EXIT", "SSL_ERROR_SSL", "SSL_ERROR_WANT_READ", "SSL_ERROR_WANT_WRITE", "SSL_ERROR_SYSCALL",
+	"SSL_CB_CONNECT_EXIT", "SSL_ERROR_SSL", "SSL_ERROR_WANT_READ", 
+	"SSL_ERROR_WANT_WRITE", "SSL_ERROR_SYSCALL", "SSL_ERROR_ZERO_RETURN",
 	"SSL_FILETYPE_PEM", 
 }, "ssl", [[
 	#include <openssl/ssl.h>
@@ -35,10 +36,10 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 		SSL_CTX		*ssl_ctx;
 		char 		*pubkey, *privkey;
 	} pulpo_ssl_manager_t;
-	typedef struct pulpo_ssl_server_option {
+	typedef struct pulpo_ssl_server_context {
 		pulpo_ssl_manager_t *ssl_manager;
 		pulpo_sockopt_t 	*sockopts;
-	} pulpo_ssl_option_t;
+	} pulpo_ssl_server_context_t;
 ]])
 
 --> exception
@@ -71,6 +72,7 @@ local SSL_ERROR_SSL = ffi_state.defs.SSL_ERROR_SSL
 local SSL_ERROR_WANT_READ = ffi_state.defs.SSL_ERROR_WANT_READ
 local SSL_ERROR_WANT_WRITE = ffi_state.defs.SSL_ERROR_WANT_WRITE
 local SSL_ERROR_SYSCALL = ffi_state.defs.SSL_ERROR_SYSCALL
+local SSL_ERROR_ZERO_RETURN = ffi_state.defs.SSL_ERROR_ZERO_RETURN
 local SSL_FILETYPE_PEM = ffi_state.defs.SSL_FILETYPE_PEM
 
 local HANDLER_TYPE_SSL
@@ -116,8 +118,8 @@ ffi.metatype('pulpo_ssl_manager_t', {
 				if t.privkey == ffi.NULL then
 					raise("SSL", "private key path is NULL")
 				end
-			elseif not opts.pubkey then
-				raise("SSL", "if you specify privkey, set pubkey also")
+			elseif opts.pubkey then
+				raise("SSL", "if you specify pubkey, set privkey also")
 			end
 		end,
 		fin = function (t)
@@ -219,8 +221,8 @@ local function ssl_connect(io)
 	return true
 end
 
-local function ssl_server_socket(p, fd, ctx)
-	return p:newio(fd, HANDLER_TYPE_SSL, ctx)	
+local function ssl_server_socket(p, fd, ctx, hdtype)
+	return p:newio(fd, hdtype or HANDLER_TYPE_SSL, ctx)	
 end
 
 
@@ -241,6 +243,7 @@ local function ssl_read(io, ptr, len)
 	end
 	return n
 end
+_M.rawread = ssl_read
 
 local function ssl_write(io, ptr, len)
 ::retry::
@@ -252,7 +255,22 @@ local function ssl_write(io, ptr, len)
 	return n
 end
 
-local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
+local function ssl_writev(io, vec, len)
+::retry::
+	local s = ""
+	for i=0,len-1 do
+		s = s .. ffi.string(vec[i].iov_base, vec[i].iov_len)
+	end
+	if #s > 0 then
+		return ssl_write(io, s, #s)
+	else
+		return 0
+	end
+end
+_M.rawwritev = ssl_writev
+
+
+local function ssl_accept_sub(io, fd, sslm, ctx, sslp, hdtype)
 	if _M.debug then
 		sslp.info_callback = ssl_info_callback_cdata
 	end
@@ -263,7 +281,7 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 		raise("SSL", "SSL_use_PrivateKey_file fail")
 	end
 	ssl.SSL_set_fd(sslp, fd)
-	local cio = ssl_server_socket(io.p, fd, ctx)
+	local cio = ssl_server_socket(io.p, fd, ctx, hdtype)
 	local n = ssl.SSL_accept(sslp)
 	if n < 0 then
 		ssl_wait_io(cio, n)
@@ -274,8 +292,9 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp)
 	end
 	return cio
 end
-local function ssl_accept(io)
-	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
+local function ssl_accept(io, hdtype, _ctx)
+	local ctx = _ctx and ffi.cast('pulpo_ssl_context_t *', _ctx) or memory.alloc_typed('pulpo_ssl_context_t')
+	ctx.addr:init()
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
 ::retry::
 	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)
@@ -290,7 +309,7 @@ local function ssl_accept(io)
 			raise("syscall", "accept", eno, io:nfd())
 		end
 	else
-		local opts = io:ctx('pulpo_ssl_option_t*')
+		local opts = io:ctx('pulpo_ssl_server_context_t*')
 		if socket.setsockopt(n, opts.sockopts) < 0 then
 			C.close(n)
 			raise("syscall", "setsockopt", eno, n)
@@ -303,10 +322,10 @@ local function ssl_accept(io)
 		end
 		ctx.ssl = sslp
 		ctx.state = STATE.CONNECTING
-		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp)
+		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp, hdtype)
 		ctx.state = STATE.CONNECTED
 		if not ok then 
-			logger.error('accept error:', cio)
+			logger.report('accept error:', cio)
 			ctx:fin() -- memory itself reused for next 
 			memory.free(ctx)
 			return nil
@@ -315,6 +334,7 @@ local function ssl_accept(io)
 		return cio
 	end
 end
+_M.rawaccept = ssl_accept
 
 local function ssl_gc(io)
 	local ctx = io:ctx('pulpo_ssl_context_t*')
@@ -332,7 +352,7 @@ local function ssl_addr(io)
 	return io:ctx('pulpo_ssl_context_t*').addr
 end
 
-HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addr)
+HANDLER_TYPE_SSL = poller.add_handler("ssl", ssl_read, ssl_write, ssl_gc, ssl_addr, ssl_writev)
 HANDLER_TYPE_SSL_LISTENER = poller.add_handler("ssl_listen", ssl_accept, nil, ssl_server_gc)
 
 function _M.initialize(opts)
@@ -360,10 +380,10 @@ function _M.new_context(opts)
 end
 
 local default_opt = {}
-function _M.connect(p, addr, opts)
+function _M.connect(p, addr, opts, hdtype, ctx)
 	opts = opts or default_opt
 	local sslm = opts.ssl_manager or ssl_manager_client
-	local ctx = memory.alloc_typed('pulpo_ssl_context_t')
+	ctx = ctx and ffi.cast('pulpo_ssl_context_t*', ctx) or memory.alloc_typed('pulpo_ssl_context_t')
 	if ctx == ffi.NULL then 
 		raise("malloc", "pulpo_ssl_context_t") 
 	end
@@ -384,14 +404,14 @@ function _M.connect(p, addr, opts)
 	end
 	ctx.ssl = sslp
 	ctx.state = STATE.INIT
-	local io = p:newio(fd, HANDLER_TYPE_SSL, ctx)
+	local io = p:newio(fd, hdtype or HANDLER_TYPE_SSL, ctx)
 	event.add_to(io, 'open')
 	ssl_connect(io) -- because its unclear that how to check failure of SSL_read/SSL_write caused by non-connected or not,
 	-- which is required to know to achieve lazy handshake, we assure ssl connection is established before any operation on that.
 	return io
 end
 
-function _M.listen(p, addr, opts)
+function _M.listen(p, addr, opts, hdtype, ctx)
 	opts = opts or default_opt
 	local a = memory.managed_alloc_typed('pulpo_addr_t')
 	local fd = socket.stream(addr, opts.sockopts, a)
@@ -408,11 +428,13 @@ function _M.listen(p, addr, opts)
 		C.close(fd)
 		raise('syscall', 'listen', fd)
 	end
-	logger.info('ssl listen:', fd, addr)
-	popts = memory.alloc_fill_typed('pulpo_ssl_option_t')
+	logger.debug('ssl listen:', fd, addr)
+	popts = ctx and 
+		ffi.cast('pulpo_ssl_server_context_t*', ctx) or 
+		memory.alloc_fill_typed('pulpo_ssl_server_context_t')
 	popts.ssl_manager = opts.ssl_manager or ssl_manager_server
 	popts.sockopts = opts.sockopts or nil
-	return p:newio(fd, HANDLER_TYPE_SSL_LISTENER, popts)
+	return p:newio(fd, hdtype or HANDLER_TYPE_SSL_LISTENER, popts)
 end
 
 return _M

@@ -277,9 +277,9 @@ local function setup_shmem_args(shmemp)
 	end)
 end
 function _M.initialize(opts)
-	opts = opts or { cache_dir = "/tmp/pulpo" }
+	opts = opts or { datadir = "/tmp/pulpo" }
 	-- create common cache dir
-	util.mkdir(opts.cache_dir)
+	util.mkdir(opts.datadir)
 	-- initialize loader and its cache directory.
 	-- boot.init_modules(runlv.LOADER)
 	loader.initialize(opts, ffi.main_ffi_state)
@@ -436,6 +436,9 @@ function _M.at_exit()
 		_M.exit_handler[i][2]()
 	end
 	-- print('at_exit end')
+end
+function _M.count()
+	return _threads.used
 end
 function _M.join(thread)
 	local rv = ffi.new("void*[1]")
