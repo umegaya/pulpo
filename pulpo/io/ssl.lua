@@ -179,7 +179,9 @@ end
 local function ssl_handshake(io, ctx)
 	local n, ret
 	while true do
+	logger.warn('SSL_do_handshake')
 		n = ssl.SSL_do_handshake(ctx)
+	logger.warn('end SSL_do_handshake', n)
 		if n > 0 then
 			break
 		end
@@ -188,6 +190,7 @@ local function ssl_handshake(io, ctx)
 end
 
 local function ssl_connect(io)
+	local idx = 0
 	local ctx = io:ctx('pulpo_ssl_context_t*')
 	local sslp = ctx.ssl
 ::retry::
@@ -209,14 +212,20 @@ local function ssl_connect(io)
 	ctx.state = STATE.CONNECTING
 	-- assert(sslp.method == ssl.SSLv23_client_method(), "method invalid")
 	local n = ssl.SSL_connect(sslp)
+	logger.warn('ssl_connect', idx); idx = idx + 1	
 	if n < 0 then 
+	logger.warn('ssl_wait_io', idx); idx = idx + 1	
 		ssl_wait_io(io, n)
+	logger.warn('ssl_handshake', idx); idx = idx + 1	
 		ssl_handshake(io, sslp)
+	logger.warn('end ssl_handshake', idx); idx = idx + 1	
 	elseif n == 0 then
 		io:close('error')
 		raise("SSL", "unrecoverable error on SSL_connect:%s", ssl_errstr())
 	end
+	logger.warn('ssl_connect', idx); idx = idx + 1	
 	ctx.state = STATE.CONNECTED
+	logger.warn('ssl_connect', idx); idx = idx + 1	
 	io:emit('open')	
 	return true
 end
@@ -293,6 +302,7 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp, hdtype)
 	return cio
 end
 local function ssl_accept(io, hdtype, _ctx)
+	local idx = 0
 	local ctx = _ctx and ffi.cast('pulpo_ssl_context_t *', _ctx) or memory.alloc_typed('pulpo_ssl_context_t')
 	ctx.addr:init()
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")

@@ -32,7 +32,7 @@ pulpo.run({
 		else
 			assert(status == 302)
 			assert(headers:getstr("Server"):match("^GFE"))
-			assert(headers:getstr("Location"):match("^http://www.google%.co%.jp/%?"))
+			assert(headers:getstr("Location"):match("^https://www.google%.co%.jp/%?"))
 		end
 		resp:fin()
 		print('graceful stop')

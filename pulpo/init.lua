@@ -58,6 +58,14 @@ local function create_opaque(fn, group, opts)
 	if opts.init_params then
 		r.init_params = memory.strdup(opts.init_params)
 	end
+	if opts.pre_start_proc then
+		local pre_start_proc = util.encode_proc(opts.pre_start_proc)
+		r.pre_start_proc = memory.strdup(pre_start_proc)
+		r.pre_start_plen = #pre_start_proc
+	end
+	if opts.pre_start_params then
+		r.pre_start_params = memory.strdup(opts.pre_start_params)
+	end
 	return r
 end
 
@@ -89,9 +97,9 @@ local function init_cdef()
 			unsigned char noloop, debug;
 			unsigned char finished, padd[3];
 			char *group;
-			char *proc, *init_proc;
-			char *init_params;
-			size_t plen, init_plen;
+			char *proc, *init_proc, *pre_start_proc;
+			char *init_params, *pre_start_params;
+			size_t plen, init_plen, pre_start_plen;
 			pulpo_poller_t *poller;
 		} pulpo_opaque_t;
 	]]
@@ -152,6 +160,18 @@ local function config_logger(opts)
 	end
 end
 
+function _M.exec_packed_proc(proc, len, params)
+	local fn = util.decode_proc(ffi.string(proc, len))
+	local ok, r = pcall(fn, params ~= ffi.NULL and ffi.string(params))
+	if not ok then
+		exception.raise('fatal', 'fail to exec packed proc', r)
+	end
+	memory.free(proc)
+	if params ~= ffi.NULL then
+		memory.free(params)
+	end
+end
+
 local function create_thread(exec, group, arg, opts)
 	return thread.create(function (arg)
 		local ffi = require 'ffiex.init'
@@ -166,15 +186,7 @@ local function create_thread(exec, group, arg, opts)
 			exception.raise('fatal', 'loading main proc fails', err)
 		end
 		if opaque.init_proc ~= ffi.NULL then
-			local init_proc = util.decode_proc(ffi.string(opaque.init_proc, opaque.init_plen))
-			local ok, r = pcall(init_proc, opaque.init_params ~= ffi.NULL and ffi.string(opaque.init_params))
-			if not ok then
-				exception.raise('fatal', 'fail to initialize worker', r)
-			end
-			memory.free(opaque.init_proc)
-			if opaque.init_params ~= ffi.NULL then
-				memory.free(opaque.init_params)
-			end
+			pulpo.exec_packed_proc(opaque.init_proc, opaque.init_plen, opaque.init_params)
 		end
 		memory.free(opaque.proc)
 		if opaque.noloop == 0 then
@@ -212,6 +224,9 @@ end
 function _M.main(proc, arg, opq)
 	local pulpo = require 'pulpo.init'
 	pulpo.tentacle(function (fn, a, o)
+		if o.pre_start_proc ~= ffi.NULL then
+			pulpo.exec_packed_proc(o.pre_start_proc, o.pre_start_plen, o.pre_start_params)
+		end
 		local ok, r = xpcall(fn, err_handler, a)
 		if not r then
 			o.finished = 1
