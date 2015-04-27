@@ -189,7 +189,7 @@ function _M.qsort(x, l, r, f, sw)
 		_M.qsort(x, m+1, r, f, sw)
 	end
 end
---[[
+--[[ self test
 local data = { [0] = 0, 6, 8, 3, 4, 9, 1, 2, 5, 7}
 _M.qsort(data, 0, 9, function (a, b)
 	return a < b
@@ -318,6 +318,15 @@ function _M.luajit_cmdline()
 		cmdl_start_index = idx
 	end
 	return table.concat({unpack(arg, cmdl_start_index, -1)}, ' ')
+end
+
+function _M.hex_escape(bin, blen)
+	local t = {}
+	blen = blen or #bin
+	for i=0, tonumber(blen) - 1 do
+		table.insert(t, ('\\x%02x'):format(ffi.cast('uint8_t *', bin)[i]))
+	end
+	return table.concat(t)
 end
 
 return _M

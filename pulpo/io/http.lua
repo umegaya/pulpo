@@ -79,6 +79,7 @@ local HEADER_SEP = ":"
 local CONTENT_LENGTH = "Content-Length"
 local TRANSFER_ENCODING = "Transfer-Encoding"
 local CONNECTION = "Connection"
+local KEEP_ALIVE = "Keep-Alive"
 
 
 --> helpers
@@ -143,7 +144,7 @@ local function make_response(header, body, blen)
 		header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
 	end
 	if not header[CONNECTION] then
-		header[CONNECTION] = "Keep-Alive"..CRLF
+		header[CONNECTION] = KEEP_ALIVE..CRLF
 	end
 	header[1] = ("HTTP/1.1 %d %s"..CRLF):format(header[1] or 200, header[2] or "OK")
 	set_vector_to_str(vec, 0, header[1])
@@ -177,12 +178,19 @@ end
 --> pulpo_http_request cdata
 local http_request_mt = {}
 http_request_mt.__index = http_request_mt
+function http_request_mt:init()
+	self.buf = ffi.NULL
+	self.body_p[0] = ffi.NULL
+	return self
+end
 function http_request_mt:fin()
 	if self.buf ~= ffi.NULL then
 		memory.free(self.buf)
+		self.buf = ffi.NULL
 	end
 	if self.body_p[0] ~= ffi.NULL then
 		memory.free(self.body_p[0])
+		self.body_p[0] = ffi.NULL
 	end
 end
 function http_request_mt:headers()
@@ -339,11 +347,11 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 	return obj
 end
 function http_context_mt:read_request(io)
-	local r, ret
+	local r, ret, req
 ::retry::
-	--print(io:fd(), 'req read start')
+	--logger.warn(io:fd(), 'req read start', self, self.len, self.ofs)
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
-	--print(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
+	--logger.warn(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
 	local prevbuflen = self.ofs
 	if r then
 		self.ofs = self.ofs + r
@@ -356,7 +364,7 @@ function http_context_mt:read_request(io)
 			self.len = self.len * 2
 		end
 	end
-	local req = self.req
+	req = self.req:init()
 	req.num_headers[0] = MAX_HEADERS
 	ret = http_parser.phr_parse_request(
 		self.buffer, self.ofs, 
@@ -370,7 +378,7 @@ function http_context_mt:read_request(io)
 	elseif ret == -1 then
 		-- TODO : upgrade to http2
 		exception.raise('http', 'malform request', ffi.string(self.buffer, self.ofs))
-	elseif not r then
+	elseif (not r) or (r == 0) then -- close connection
 		req:fin()
 		return nil
 	else
@@ -395,7 +403,7 @@ function http_context_mt:read_response(io)
 			self.len = self.len * 2
 		end
 	end
-	local resp = self.resp
+	local resp = self.resp:init()
 	resp.num_headers[0] = MAX_HEADERS
 	ret = http_parser.phr_parse_response(self.buffer, self.ofs, resp.minor_version, resp.status_p,
 		ffi.cast('const char **', resp.body_p), resp.body_len, self.header_work,
@@ -406,7 +414,7 @@ function http_context_mt:read_response(io)
 		return resp
 	elseif ret == -1 then
 		exception.raise('http', 'malform response', ffi.string(self.buffer, self.ofs))
-	elseif not r then
+	elseif (not r) or (r == 0) then
 		resp:fin()
 		return nil
 	else
@@ -433,7 +441,7 @@ function http_context_mt:read(io, p, len)
 	return tcp.rawread(io, p, len)
 end
 function http_context_mt:accept(io)
-	return tcp.rawaccept(io, HANDLER_TYPE_HTTP_SERVER, self)
+	return tcp.rawaccept(io, HANDLER_TYPE_HTTP_SERVER, self.tcp)
 end
 function http_context_mt:writev(io, vec, len)
 	return tcp.rawwritev(io, vec, len)
@@ -473,6 +481,8 @@ local function http_accept(io)
 		assert(ctx ~= ffi.NULL, "error alloc context")
 	end
 	local fd = ctx:accept(io)
+	assert(fd:ctx('pulpo_http_context_t*') == ctx, "ptr differ")
+	--logger.warn(fd:fd(), 'http_accept:', ctx, fd:ctx('pulpo_http_context_t*'), ctx.buffer, ctx.len, ctx.ofs)
 	ctx = nil
 	return fd
 end
@@ -482,8 +492,12 @@ local function http_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_HTTP = poller.add_handler("http", http_read, http_write, http_gc)
-HANDLER_TYPE_HTTP_SERVER = poller.add_handler("http_server", http_server_read, http_server_write, http_gc)
+local function http_addr(io)
+	return io:ctx('pulpo_http_context_t*').tcp.addr
+end
+
+HANDLER_TYPE_HTTP = poller.add_handler("http", http_read, http_write, http_gc, http_addr)
+HANDLER_TYPE_HTTP_SERVER = poller.add_handler("http_server", http_server_read, http_server_write, http_gc, http_addr)
 HANDLER_TYPE_HTTP_LISTENER = poller.add_handler("http_listen", http_accept, nil, http_gc)
 
 function _M.connect(p, addr, opts)

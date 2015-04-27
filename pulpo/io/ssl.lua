@@ -6,6 +6,7 @@ local memory = require 'pulpo.memory'
 local errno = require 'pulpo.errno'
 local socket = require 'pulpo.socket'
 local event = require 'pulpo.event'
+local fs = require 'pulpo.fs'
 local exception = require 'pulpo.exception'
 local raise = exception.raise
 
@@ -16,7 +17,7 @@ local ffi_state, ssl = loader.load('ssl.lua', {
 	"SSL_CTX_new", "SSL_new", "SSL_free", "SSL_get_error", "SSL_library_init", "SSL_load_error_strings", 
 	"SSL_set_fd", "SSL_connect", "SSL_shutdown", "SSL_do_handshake", "SSL_accept", "SSL_read", "SSL_write", 
 	"SSLv23_server_method", "TLSv1_server_method", "SSLv23_client_method", "TLSv1_client_method",
-	"SSL_use_PrivateKey_file", "SSL_use_certificate_file", 
+	"SSL_CTX_use_certificate_file", "SSL_CTX_use_PrivateKey_file", 
 	"ERR_error_string", "ERR_get_error", "ERR_print_errors_fp", 
 
 	"pulpo_ssl_manager_t", "pulpo_ssl_server_context_t", "pulpo_ssl_context_t",
@@ -108,15 +109,27 @@ ffi.metatype('pulpo_ssl_manager_t', {
 				opts.set_ctx_property(t.ssl_ctx)
 			end
 			if opts.pubkey then
+				if not fs.exists(opts.pubkey) then
+					raise('not_found', 'public key file', opts.pubkey)
+				end
 				t.pubkey = memory.strdup(opts.pubkey)
 				if t.pubkey == ffi.NULL then
 					raise("SSL", "public key path is NULL")
 				end
+				if ssl.SSL_CTX_use_certificate_file(t.ssl_ctx, t.pubkey, opts.filetype or SSL_FILETYPE_PEM) < 0 then
+					raise("SSL", "SSL_CTX_use_certificate_file fail")
+				end
 			end
 			if opts.privkey then
+				if not fs.exists(opts.privkey) then
+					raise('not_found', 'private key file', opts.privkey)
+				end
 				t.privkey = memory.strdup(opts.privkey)
 				if t.privkey == ffi.NULL then
 					raise("SSL", "private key path is NULL")
+				end
+				if ssl.SSL_CTX_use_PrivateKey_file(t.ssl_ctx, t.privkey, opts.filetype or SSL_FILETYPE_PEM) < 0 then
+					raise("SSL", "SSL_CTX_use_certificate_file fail")
 				end
 			elseif opts.pubkey then
 				raise("SSL", "if you specify pubkey, set privkey also")
@@ -166,22 +179,20 @@ local function ssl_wait_io(io, err)
 		end
 	elseif ret == SSL_ERROR_SYSCALL then
 		io:close('error')
-		raise("SSL", 'ssl_wait_io fail (%d/%d):%d', err, ret, errno.errno())
+		raise("SSL", ('ssl_wait_io fail (%d/%d):%d'):format(err, ret, errno.errno()))
 	elseif ret == SSL_ERROR_ZERO_RETURN then
 		io:close('remote')
 		raise("pipe")
 	else
 		io:close('error')
-		raise("SSL", 'ssl_wait_io fail (%d/%d):%d', err, ret, ssl_errstr())
+		raise("SSL", ('ssl_wait_io fail (%d/%d):%s'):format(err, ret, ssl_errstr()))
 	end
 end
 
 local function ssl_handshake(io, ctx)
 	local n, ret
 	while true do
-	logger.warn('SSL_do_handshake')
 		n = ssl.SSL_do_handshake(ctx)
-	logger.warn('end SSL_do_handshake', n)
 		if n > 0 then
 			break
 		end
@@ -212,20 +223,14 @@ local function ssl_connect(io)
 	ctx.state = STATE.CONNECTING
 	-- assert(sslp.method == ssl.SSLv23_client_method(), "method invalid")
 	local n = ssl.SSL_connect(sslp)
-	logger.warn('ssl_connect', idx); idx = idx + 1	
 	if n < 0 then 
-	logger.warn('ssl_wait_io', idx); idx = idx + 1	
 		ssl_wait_io(io, n)
-	logger.warn('ssl_handshake', idx); idx = idx + 1	
 		ssl_handshake(io, sslp)
-	logger.warn('end ssl_handshake', idx); idx = idx + 1	
 	elseif n == 0 then
 		io:close('error')
 		raise("SSL", "unrecoverable error on SSL_connect:%s", ssl_errstr())
 	end
-	logger.warn('ssl_connect', idx); idx = idx + 1	
 	ctx.state = STATE.CONNECTED
-	logger.warn('ssl_connect', idx); idx = idx + 1	
 	io:emit('open')	
 	return true
 end
@@ -283,12 +288,14 @@ local function ssl_accept_sub(io, fd, sslm, ctx, sslp, hdtype)
 	if _M.debug then
 		sslp.info_callback = ssl_info_callback_cdata
 	end
+	--[[
 	if sslm.pubkey ~= ffi.NULL and ssl.SSL_use_certificate_file(sslp, sslm.pubkey, SSL_FILETYPE_PEM) < 0 then
 		raise("SSL", "SSL_use_certificate_file fail")
 	end
 	if sslm.privkey ~= ffi.NULL and ssl.SSL_use_PrivateKey_file(sslp, sslm.privkey, SSL_FILETYPE_PEM) < 0 then
 		raise("SSL", "SSL_use_PrivateKey_file fail")
 	end
+	]]
 	ssl.SSL_set_fd(sslp, fd)
 	local cio = ssl_server_socket(io.p, fd, ctx, hdtype)
 	local n = ssl.SSL_accept(sslp)
@@ -316,18 +323,21 @@ local function ssl_accept(io, hdtype, _ctx)
 			end
 			goto retry
 		else
+			if not _ctx then memory.free(ctx) end
 			raise("syscall", "accept", eno, io:nfd())
 		end
 	else
 		local opts = io:ctx('pulpo_ssl_server_context_t*')
 		if socket.setsockopt(n, opts.sockopts) < 0 then
 			C.close(n)
+			if not _ctx then memory.free(ctx) end
 			raise("syscall", "setsockopt", eno, n)
 		end
 		local sslm = opts.ssl_manager
 		sslp = ssl.SSL_new(sslm.ssl_ctx)
 		if sslp == ffi.NULL then
 			C.close(n)
+			if not _ctx then memory.free(ctx) end
 			raise("SSL", "SSL_new fail:%s", ssl_errstr())
 		end
 		ctx.ssl = sslp
@@ -336,11 +346,11 @@ local function ssl_accept(io, hdtype, _ctx)
 		ctx.state = STATE.CONNECTED
 		if not ok then 
 			logger.report('accept error:', cio)
-			ctx:fin() -- memory itself reused for next 
-			memory.free(ctx)
+			C.close(n)
+			ctx:fin()
+			if not _ctx then memory.free(ctx) end
 			return nil
 		end
-		ctx = nil -- ctx is stored with cio. 
 		return cio
 	end
 end

@@ -94,8 +94,13 @@ local function https_gc(io)
 	C.close(io:fd())
 end
 
-HANDLER_TYPE_HTTPS = poller.add_handler("https", https_read, https_write, https_gc)
-HANDLER_TYPE_HTTPS_SERVER = poller.add_handler("https_server", https_server_read, https_server_write, https_gc)
+local function https_addr(io)
+	return io:ctx('pulpo_https_context_t*').ssl.addr
+end
+
+
+HANDLER_TYPE_HTTPS = poller.add_handler("https", https_read, https_write, https_gc, https_addr)
+HANDLER_TYPE_HTTPS_SERVER = poller.add_handler("https_server", https_server_read, https_server_write, https_gc, https_addr)
 HANDLER_TYPE_HTTPS_LISTENER = poller.add_handler("https_listen", https_accept, nil, https_gc)
 
 function _M.connect(p, addr, opts)

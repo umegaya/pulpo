@@ -146,10 +146,12 @@ end
 
 local function tcp_writev(io, vec, vlen)
 ::retry::
---[[for i=0,tonumber(vlen)-1 do
+--[[
+for i=0,tonumber(vlen)-1 do
 	local v = vec[i]
 	logger.notice('vec', i, ("[%q]"):format(ffi.string(v.iov_base, v.iov_len)))
-end]]
+end
+--]]
 	local n = C.writev(io:fd(), vec, vlen)
 	if n < 0 then
 		on_write_error(io, n)
@@ -169,18 +171,24 @@ local function tcp_writef(io, in_fd, offset_p, count)
 	return n
 end
 
-local ctx
-local function tcp_accept(io, hdtype, _ctx)
+local ctx_work
+local function tcp_accept(io, hdtype, given_ctx)
+	local ctx
 ::retry::
 	-- print('tcp_accept:', io:fd())
-	if not ctx then
-		-- because if C.accept returns any fd, there is no point to yield this funciton.
-		-- so other coroutine which call tcp_accept never intercept this ctx. 
-		-- we can reuse ctx pointer for next accept call.
-		ctx = _ctx and ffi.cast('pulpo_tcp_context_t *', _ctx) or memory.alloc_typed('pulpo_tcp_context_t')
-		ctx.addr:init()
-		assert(ctx ~= ffi.NULL, "error alloc context")
+	if given_ctx then
+		ctx = ffi.cast('pulpo_tcp_context_t *', given_ctx)
+	else
+		if not ctx_work then
+			-- because if C.accept returns any fd, there is no point to yield this funciton.
+			-- so other coroutine which call tcp_accept never intercept this ctx. 
+			-- we can reuse ctx pointer for next accept call. (if accept fails)
+			ctx_work = memory.alloc_typed('pulpo_tcp_context_t')
+			assert(ctx_work ~= ffi.NULL, "error alloc context")
+		end
+		ctx = ctx_work
 	end
+	ctx.addr:init()
 	local n = C.accept(io:fd(), ctx.addr.p, ctx.addr.len)
 	if n < 0 then
 		local eno = errno.errno()
@@ -201,7 +209,9 @@ local function tcp_accept(io, hdtype, _ctx)
 	end
 	local tmp = ctx
 	tmp.state = STATE.CONNECTED
-	ctx = nil
+	if ctx == ctx_work then
+		ctx_work = nil
+	end
 	return tcp_server_socket(io.p, n, tmp, hdtype)
 end
 _M.rawaccept = tcp_accept
