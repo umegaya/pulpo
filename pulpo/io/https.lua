@@ -74,19 +74,11 @@ local function https_server_write(io, body, len, header)
 	return io:ctx('pulpo_https_context_t*'):write_response(io, body, len, header)
 end
 
-local ctx
 local function https_accept(io)
-	if not ctx then
-		-- because if C.accept returns any fd, there is no point to yield this funciton.
-		-- so other coroutine which call tcp_accept never intercept this ctx. 
-		-- we can reuse ctx pointer for next accept call.
-		ctx = memory.alloc_typed('pulpo_https_context_t')
-		ctx:init_buffer()
-		assert(ctx ~= ffi.NULL, "error alloc context")
-	end
-	local fd = ctx:accept(io)
-	ctx = nil
-	return fd
+	local ctx = memory.alloc_typed('pulpo_https_context_t')
+	ctx:init_buffer()
+	assert(ctx ~= ffi.NULL, "error alloc context")
+	return ctx:accept(io)
 end
 
 local function https_gc(io)

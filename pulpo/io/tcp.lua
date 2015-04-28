@@ -175,7 +175,7 @@ local ctx_work
 local function tcp_accept(io, hdtype, given_ctx)
 	local ctx
 ::retry::
-	-- print('tcp_accept:', io:fd())
+	-- print('tcp_accept:', io:fd(), given_ctx)
 	if given_ctx then
 		ctx = ffi.cast('pulpo_tcp_context_t *', given_ctx)
 	else
