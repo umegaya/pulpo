@@ -76,12 +76,16 @@ local MAX_TOKENS = 10240
 local INITIAL_HEADER_BUFFER = 512
 local CRLF = "\r\n"
 local HEADER_SEP = ":"
+local AGENT_SEP = "/"
 local CONTENT_LENGTH = "Content-Length"
 local TRANSFER_ENCODING = "Transfer-Encoding"
 local CONNECTION = "Connection"
 local KEEP_ALIVE = "Keep-Alive"
 local USER_AGENT = "User-Agent"
+local SERVER = "Server"
+local LUACT_RPC_VERSION = "0.1.0"
 local LUACT_AGENT = "Luact-RPC"
+local LUACT_SERVER = "Luact-RPC-Server"
 local X_LUACT_MSGID = "X-Luact-MsgID"
 
 
@@ -115,7 +119,7 @@ local function make_request(header, body, blen)
 	local vec = new_vec()
 	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
 	set_vector_to_str(vec, 0, header[1])
-	header[USER_AGENT] = LUACT_AGENT..CRLF
+	header[USER_AGENT] = LUACT_AGENT..AGENT_SEP..LUACT_RPC_VERSION..CRLF
 	set_vector_to_str(vec, idx, USER_AGENT)
 	set_vector_to_str(vec, idx + 1, HEADER_SEP)
 	set_vector_to_str(vec, idx + 2, header[USER_AGENT])
@@ -155,6 +159,7 @@ local function make_response(header, body, blen)
 		header[CONNECTION] = KEEP_ALIVE..CRLF
 	end
 	header[1] = ("HTTP/1.1 %d %s"..CRLF):format(header[1] or 200, header[2] or "OK")
+	header[USER_AGENT] = LUACT_SERVER..AGENT_SEP..LUACT_RPC_VERSION..CRLF
 	set_vector_to_str(vec, 0, header[1])
 	set_vector_to_str(vec, 1, CONTENT_LENGTH)
 	set_vector_to_str(vec, 2, HEADER_SEP)
@@ -162,7 +167,10 @@ local function make_response(header, body, blen)
 	set_vector_to_str(vec, 4, CONNECTION)
 	set_vector_to_str(vec, 5, HEADER_SEP)
 	set_vector_to_str(vec, 6, header[CONNECTION])
-	idx = 7
+	set_vector_to_str(vec, 7, SERVER)
+	set_vector_to_str(vec, 8, HEADER_SEP)
+	set_vector_to_str(vec, 9, header[SERVER])
+	idx = 10
 	for k,v in pairs(header) do
 		if type(k) == 'string' and (k ~= CONTENT_LENGTH) and (k ~= CONNECTION) then
 			set_vector_to_str(vec, idx, k)
@@ -255,6 +263,10 @@ end
 function http_header_mt:is_luact_agent()
 	local v, vl = self:get(USER_AGENT)
 	return v and memory.cmp(v, LUACT_AGENT, #LUACT_AGENT)
+end
+function http_header_mt:is_luact_server()
+	local v, vl = self:get(SERVER)
+	return v and memory.cmp(v, LUACT_SERVER, #LUACT_SERVER)
 end
 function http_header_mt:luact_msgid()
 	local id = self:getstr(X_LUACT_MSGID)
