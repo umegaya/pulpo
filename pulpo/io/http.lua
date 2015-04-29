@@ -80,6 +80,9 @@ local CONTENT_LENGTH = "Content-Length"
 local TRANSFER_ENCODING = "Transfer-Encoding"
 local CONNECTION = "Connection"
 local KEEP_ALIVE = "Keep-Alive"
+local USER_AGENT = "User-Agent"
+local LUACT_AGENT = "Luact-RPC"
+local X_LUACT_MSGID = "X-Luact-MsgID"
 
 
 --> helpers
@@ -112,6 +115,11 @@ local function make_request(header, body, blen)
 	local vec = new_vec()
 	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
 	set_vector_to_str(vec, 0, header[1])
+	header[USER_AGENT] = LUACT_AGENT..CRLF
+	set_vector_to_str(vec, idx, USER_AGENT)
+	set_vector_to_str(vec, idx + 1, HEADER_SEP)
+	set_vector_to_str(vec, idx + 2, header[USER_AGENT])
+	idx = idx + 3
 	if body and blen then
 		if not header[CONTENT_LENGTH] then
 			header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
@@ -122,7 +130,7 @@ local function make_request(header, body, blen)
 		idx = idx + 3
 	end
 	for k,v in pairs(header) do
-		if type(k) == 'string' and (k ~= CONTENT_LENGTH) then
+		if type(k) == 'string' and (k ~= CONTENT_LENGTH) and (k ~= USER_AGENT) then
 			set_vector_to_str(vec, idx, k)
 			set_vector_to_str(vec, idx + 1, HEADER_SEP)
 			set_vector_to_str(vec, idx + 2, v)
@@ -243,6 +251,14 @@ end
 function http_header_mt:getstr(k)
 	local v, vl = self:get(k)
 	return v and ffi.string(v, vl)
+end
+function http_header_mt:is_luact_agent()
+	local v, vl = self:get(USER_AGENT)
+	return v and memory.cmp(v, LUACT_AGENT, #LUACT_AGENT)
+end
+function http_header_mt:luact_msgid()
+	local id = self:getstr(X_LUACT_MSGID)
+	return id and tonumber(id) or 0
 end
 ffi.metatype('pulpo_http_header_t', http_header_mt)
 
