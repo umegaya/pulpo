@@ -210,7 +210,7 @@ function http_request_mt:fin()
 		self.body_p[0] = ffi.NULL
 	end
 end
-function http_request_mt:headers()
+function http_request_mt:cdata_headers()
 	local p = ffi.new('pulpo_http_header_t')
 	p.num_headers = self.num_headers[0]
 	p.headers = self.headers_p
@@ -225,6 +225,14 @@ end
 function http_request_mt:path()
 	return ffi.string(self.path_p[0], self.path_len[0])
 end
+function http_request_mt:headers()
+	return self:cdata_headers():as_table()
+end
+function http_request_mt:raw_payload()
+	return self:method(), self:path(),
+		self:cdata_headers(),
+		self.body_p[0], self.body_len[0]
+end
 function http_request_mt:payload()
 	return self:method(), self:path(),
 		self:headers(),
@@ -238,6 +246,9 @@ local http_response_mt = util.copy_table(http_request_mt)
 http_response_mt.__index = http_response_mt
 function http_response_mt:status()
 	return self.status_p[0]
+end
+function http_response_mt:raw_payload()
+	return self:status(), self:cdata_headers(), self.body_p[0], self.body_len[0]
 end
 function http_response_mt:payload()
 	return self:status(), self:headers(), self.body_p[0], self.body_len[0]
@@ -260,6 +271,14 @@ end
 function http_header_mt:getstr(k)
 	local v, vl = self:get(k)
 	return v and ffi.string(v, vl)
+end
+function http_header_mt:as_table()
+	local r = {}
+	for i=0, tonumber(self.num_headers)-1 do
+		local h = self.headers[i]
+		r[ffi.string(h.name, h.name_len)] = ffi.string(h.value, h.value_len)
+	end
+	return r	
 end
 function http_header_mt:is_luact_agent()
 	local v, vl = self:get(USER_AGENT)
