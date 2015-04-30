@@ -4,7 +4,7 @@ local socket = require 'pulpo.socket'
 local fs = require 'pulpo.fs'
 
 thread.initialize({
-	datadir = './tmp'
+	datadir = '/tmp/pulpo'
 })
 
 fs.rmdir("/tmp/test_pulpo_logger")

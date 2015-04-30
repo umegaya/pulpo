@@ -159,7 +159,7 @@ local function make_response(header, body, blen)
 		header[CONNECTION] = KEEP_ALIVE..CRLF
 	end
 	header[1] = ("HTTP/1.1 %d %s"..CRLF):format(header[1] or 200, header[2] or "OK")
-	header[USER_AGENT] = LUACT_SERVER..AGENT_SEP..LUACT_RPC_VERSION..CRLF
+	header[SERVER] = LUACT_SERVER..AGENT_SEP..LUACT_RPC_VERSION..CRLF
 	set_vector_to_str(vec, 0, header[1])
 	set_vector_to_str(vec, 1, CONTENT_LENGTH)
 	set_vector_to_str(vec, 2, HEADER_SEP)
@@ -172,7 +172,8 @@ local function make_response(header, body, blen)
 	set_vector_to_str(vec, 9, header[SERVER])
 	idx = 10
 	for k,v in pairs(header) do
-		if type(k) == 'string' and (k ~= CONTENT_LENGTH) and (k ~= CONNECTION) then
+		if type(k) == 'string' and 
+			(k ~= CONTENT_LENGTH) and (k ~= CONNECTION) and (k ~= SERVER) then
 			set_vector_to_str(vec, idx, k)
 			set_vector_to_str(vec, idx + 1, HEADER_SEP)
 			set_vector_to_str(vec, idx + 2, v)

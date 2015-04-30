@@ -147,6 +147,7 @@ end
 local function tcp_writev(io, vec, vlen)
 ::retry::
 --[[
+logger.notice(debug.traceback())
 for i=0,tonumber(vlen)-1 do
 	local v = vec[i]
 	logger.notice('vec', i, ("[%q]"):format(ffi.string(v.iov_base, v.iov_len)))

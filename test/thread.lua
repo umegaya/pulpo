@@ -8,7 +8,7 @@ local loader = require 'pulpo.loader'
 print(loader, loader.initialize, package, package.loaded["pulpo.loader"])
 
 thread.initialize({
-	datadir = './tmp'
+	datadir = '/tmp/pulpo'
 })
 
 --local wp = require 'pulpo.debug.watchpoint'
