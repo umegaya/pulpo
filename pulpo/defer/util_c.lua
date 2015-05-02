@@ -78,9 +78,9 @@ function _M.maxconn(set_to)
 	(from http://docs.codehaus.org/display/JETTY/HighLoadServers)
 ]]
 	if ffi.os == "Linux" then
-	os.execute(('sudo /sbin/sysctl -w net.core.somaxconn=%d'):format(set_to))
+	os.execute(('sudo /sbin/sysctl -w net.core.somaxconn=%d 2>/dev/null'):format(set_to))
 	elseif ffi.os == "OSX" then
-	os.execute(('sudo sysctl -w kern.ipc.somaxconn=%d'):format(set_to))
+	os.execute(('sudo sysctl -w kern.ipc.somaxconn=%d 2>/dev/null'):format(set_to))
 	end
 	return set_to
 end
