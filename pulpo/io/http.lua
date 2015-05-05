@@ -206,7 +206,9 @@ function http_request_mt:fin()
 		self.buf = ffi.NULL
 	end
 	if self.body_p[0] ~= ffi.NULL then
-		memory.free(self.body_p[0])
+		if self.body_len[0] > 0 then
+			memory.free(self.body_p[0])
+		end
 		self.body_p[0] = ffi.NULL
 	end
 end
@@ -322,14 +324,14 @@ function http_context_mt:get_content_length_and_encoding(hd, hdlen)
 			break
 		end
 	end
-	return len or 4096, encode
+	return len, encode
 end
+local empty_body_dummy = ""
 function http_context_mt:parse_body(io, obj, headers, read_start)
 	local ret
 	obj.headers_p = memory.dup('struct phr_header', headers, obj.num_headers[0])
 	-- copy current read buf to req object
 	obj.buf, obj.len = self.buffer, self.len
-
 	local body_buf_len, encode = self:get_content_length_and_encoding(headers, obj.num_headers[0])
 	local body, body_ofs, body_buf_used = memory.alloc_typed('char', body_buf_len), 0
 	if self.ofs > read_start then
@@ -338,7 +340,12 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 	else
 		body_buf_used = 0
 	end
-	self:init_buffer()
+	self:init_buffer() -- this changes self.ofs, so below here can call this.
+	if not body_buf_len then -- does not have body
+		obj.body_p[0] = ffi.cast('char *', empty_body_dummy)
+		obj.body_len[0] = 0
+		return obj
+	end
 	if encode == "chunked" then
 		-- process chunked encoding
 		memory.fill(self.decoder, ffi.sizeof(self.decoder[0]))
@@ -376,7 +383,7 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 			body_buf_used = body_ofs + ret
 			goto chunked_retry
 		end
-	elseif not encode then
+	else
 		-- normal read loop upto clen bytes
 		while body_buf_used < body_buf_len do
 			ret = self:read(io, body + body_buf_used, body_buf_len - body_buf_used)
@@ -387,8 +394,6 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 			body_buf_used = body_buf_used + ret
 		end
 		body_ofs = body_buf_used
-	else
-		exception.raise('http', 'unsupported transfer encoding', encode)
 	end
 	obj.body_p[0] = body
 	obj.body_len[0] = body_ofs
@@ -397,9 +402,9 @@ end
 function http_context_mt:read_request(io)
 	local r, ret, req
 ::retry::
-	--logger.warn(io:fd(), 'req read start', self, self.len, self.ofs)
+	-- logger.warn(io:fd(), 'req read start', self, self.len, self.ofs)
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
-	--logger.warn(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
+	-- logger.warn(io:fd(), 'end req read', r, self.buffer, '['..ffi.string(self.buffer, r)..']')
 	local prevbuflen = self.ofs
 	if r then
 		self.ofs = self.ofs + r
