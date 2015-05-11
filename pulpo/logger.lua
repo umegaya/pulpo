@@ -76,7 +76,10 @@ function _M.log(type, ...)
 	local s = settings[type]
 	if s and (not s.mute) and _M.loglevel <= s.level then
 		if s.with_bt then
-			s:sender(..., debug.traceback())
+			local nargs = select('#', ...) + 1
+			local args = {...}
+			args[nargs] = debug.traceback()
+			s:sender(unpack(args, 1, nargs))
 		else
 			s:sender(...)
 		end
