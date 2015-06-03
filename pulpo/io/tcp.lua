@@ -61,7 +61,6 @@ local function tcp_connect(io)
 		elseif eno == ECONNREFUSED then
 			goto retry
 		else
-			io:close('error')
 			raise('syscall', 'connect', io:nfd())
 		end
 	end
@@ -81,7 +80,6 @@ local function tcp_read(io, ptr, len)
 	local n = C.recv(io:fd(), ptr, len, 0)
 	if n <= 0 then
 		if n == 0 then 
-			io:close('remote')
 			return nil
 		end
 		local eno = errno.errno()
@@ -94,7 +92,6 @@ local function tcp_read(io, ptr, len)
 			tcp_connect(io)
 			goto retry
 		else
-			io:close('error')
 			raise('syscall', 'read', io:nfd())
 		end
 	end
@@ -125,10 +122,9 @@ local function on_write_error(io, ret)
 		if io:ctx('pulpo_tcp_context_t*').state == STATE.INIT then
 			tcp_connect(io)
 		else	
-			io:close('remote')
+			raise('pipe')
 		end	
 	else
-		io:close('error')
 		raise('syscall', 'write', io:nfd())
 	end
 	return true

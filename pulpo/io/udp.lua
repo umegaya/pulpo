@@ -36,7 +36,7 @@ typedef struct pulpo_udp_context {
 ]]
 
 --> helper function
-local function udp_connect(io)
+local function udp_connect(io, close_on_error)
 ::retry::
 	local ctx = io:ctx('pulpo_udp_context_t*')
 	if ctx.state == STATE.CONNECTING then
@@ -60,7 +60,9 @@ local function udp_connect(io)
 		elseif eno == ECONNREFUSED then
 			goto retry
 		else
-			io:close('error')
+			if close_on_error then
+				io:close('error')
+			end
 			raise('syscall', 'connect', io:nfd())
 		end
 	end
@@ -75,7 +77,6 @@ local function udp_read(io, ptr, len, addr)
 	local n = C.recvfrom(io:fd(), ptr, len, 0, addr.p, addr.len)
 	if n <= 0 then
 		if n == 0 then 
-			io:close('remote')
 			return nil
 		end
 		local eno = errno.errno()
@@ -85,7 +86,6 @@ local function udp_read(io, ptr, len, addr)
 			end
 			goto retry
 		else
-			io:close('error')
 			raise('syscall', 'read', io:nfd())
 		end
 	end
@@ -102,9 +102,8 @@ local function on_write_error(io, ret)
 	elseif eno == ENOTCONN then
 		udp_connect(io)
 	elseif eno == EPIPE then
-		io:close('remote')
+		raise('pipe')
 	else
-		io:close('error')
 		raise('syscall', 'write', io:nfd())
 	end
 	return true
@@ -197,7 +196,7 @@ function _M.connect(p, addr, opts)
 	local fd, ctx = open(p, addr, opts)
 	local io = p:newio(fd, HANDLER_TYPE_UDP_CONNECTED, ctx)
 	event.add_to(io, 'open')
-	udp_connect(io)
+	udp_connect(io, true)
 	return io
 end
 

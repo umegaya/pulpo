@@ -94,7 +94,11 @@ ffi.metatype('pulpo_ssl_context_t', {
 			if t.ssl ~= ffi.NULL then
 				ssl.SSL_shutdown(t.ssl)
 				ssl.SSL_free(t.ssl)
+				t.ssl = ffi.NULL
 			end
+		end,
+		connected = function (t)
+			return t.state == STATE.CONNECTED
 		end,
 	}
 })
@@ -178,13 +182,11 @@ local function ssl_wait_io(io, err)
 			raise("pipe")
 		end
 	elseif ret == SSL_ERROR_SYSCALL then
-		io:close('error')
+		--io:close('error')
 		raise("SSL", ('ssl_wait_io fail (%d/%d):%d'):format(err, ret, errno.errno()))
 	elseif ret == SSL_ERROR_ZERO_RETURN then
-		io:close('remote')
 		raise("pipe")
 	else
-		io:close('error')
 		raise("SSL", ('ssl_wait_io fail (%d/%d):%s'):format(err, ret, ssl_errstr()))
 	end
 end
@@ -197,6 +199,16 @@ local function ssl_handshake(io, ctx)
 			break
 		end
 		ssl_wait_io(io, n)
+	end
+end
+
+local function ssl_connect_sub(io, sslp)
+	local n = ssl.SSL_connect(sslp)
+	if n < 0 then 
+		ssl_wait_io(io, n)
+		ssl_handshake(io, sslp)
+	elseif n == 0 then
+		raise("SSL", "unrecoverable error on SSL_connect:%s", ssl_errstr())
 	end
 end
 
@@ -222,13 +234,10 @@ local function ssl_connect(io)
 	end
 	ctx.state = STATE.CONNECTING
 	-- assert(sslp.method == ssl.SSLv23_client_method(), "method invalid")
-	local n = ssl.SSL_connect(sslp)
-	if n < 0 then 
-		ssl_wait_io(io, n)
-		ssl_handshake(io, sslp)
-	elseif n == 0 then
-		io:close('error')
-		raise("SSL", "unrecoverable error on SSL_connect:%s", ssl_errstr())
+	local ok, r = pcall(ssl_connect_sub, io, sslp)
+	if not ok then
+		io:close(r:is('SSL') and 'error' or 'remote')
+		error(r)
 	end
 	ctx.state = STATE.CONNECTED
 	io:emit('open')	
@@ -245,14 +254,7 @@ local function ssl_read(io, ptr, len)
 ::retry::
 	local n = ssl.SSL_read(io:ctx('pulpo_ssl_context_t*').ssl, ptr, len)
 	if n < 0 then
-		local ok, r = pcall(ssl_wait_io, io, n)
-		if not ok then 
-			if r:is('pipe') then
-				return nil
-			else
-				error(r)
-			end
-		end
+		ssl_wait_io(io, n)
 		goto retry
 	end
 	return n
@@ -284,32 +286,21 @@ end
 _M.rawwritev = ssl_writev
 
 
-local function ssl_accept_sub(io, fd, sslm, ctx, sslp, hdtype)
-	if _M.debug then
-		sslp.info_callback = ssl_info_callback_cdata
-	end
-	--[[
-	if sslm.pubkey ~= ffi.NULL and ssl.SSL_use_certificate_file(sslp, sslm.pubkey, SSL_FILETYPE_PEM) < 0 then
-		raise("SSL", "SSL_use_certificate_file fail")
-	end
-	if sslm.privkey ~= ffi.NULL and ssl.SSL_use_PrivateKey_file(sslp, sslm.privkey, SSL_FILETYPE_PEM) < 0 then
-		raise("SSL", "SSL_use_PrivateKey_file fail")
-	end
-	]]
-	ssl.SSL_set_fd(sslp, fd)
-	local cio = ssl_server_socket(io.p, fd, ctx, hdtype)
+local function ssl_accept_sub(cio, sslp)
 	local n = ssl.SSL_accept(sslp)
 	if n < 0 then
 		ssl_wait_io(cio, n)
 		ssl_handshake(cio, sslp)
 	elseif n == 0 then
-		io:close('error')
 		raise("SSL", "unrecoverable error on SSL_accept:%s", ssl_errstr())
 	end
 	return cio
 end
 local function ssl_accept(io, hdtype, _ctx)
 	local idx = 0
+	local cio
+	local opts = io:ctx('pulpo_ssl_server_context_t*')
+	local sslm = opts.ssl_manager
 	local ctx = _ctx and ffi.cast('pulpo_ssl_context_t *', _ctx) or memory.alloc_typed('pulpo_ssl_context_t')
 	ctx.addr:init()
 	assert(ctx ~= ffi.NULL, "fail to alloc ssl_context")
@@ -327,30 +318,31 @@ local function ssl_accept(io, hdtype, _ctx)
 			raise("syscall", "accept", eno, io:nfd())
 		end
 	else
-		local opts = io:ctx('pulpo_ssl_server_context_t*')
 		if socket.setsockopt(n, opts.sockopts) < 0 then
 			C.close(n)
 			if not _ctx then memory.free(ctx) end
 			raise("syscall", "setsockopt", eno, n)
 		end
-		local sslm = opts.ssl_manager
-		sslp = ssl.SSL_new(sslm.ssl_ctx)
+		local sslp = ssl.SSL_new(sslm.ssl_ctx)
 		if sslp == ffi.NULL then
 			C.close(n)
 			if not _ctx then memory.free(ctx) end
 			raise("SSL", "SSL_new fail:%s", ssl_errstr())
+		elseif _M.debug then
+			sslp.info_callback = ssl_info_callback_cdata
 		end
+		ssl.SSL_set_fd(sslp, n)
 		ctx.ssl = sslp
+		cio = ssl_server_socket(io.p, n, ctx, hdtype)
 		ctx.state = STATE.CONNECTING
-		local ok, cio = pcall(ssl_accept_sub, io, n, sslm, ctx, sslp, hdtype)
-		ctx.state = STATE.CONNECTED
+		local ok, r = pcall(ssl_accept_sub, cio, sslp)
 		if not ok then 
-			logger.report('accept error:', cio)
-			C.close(n)
-			ctx:fin()
-			if not _ctx then memory.free(ctx) end
-			return nil
+			ctx.state = STATE.INIT
+			logger.report('accept error:', r)
+			cio:close(r:is('SSL') and 'error' or 'remote')
+			goto retry
 		end
+		ctx.state = STATE.CONNECTED
 		return cio
 	end
 end
@@ -360,12 +352,15 @@ local function ssl_gc(io)
 	local ctx = io:ctx('pulpo_ssl_context_t*')
 	if ctx then
 		ctx:fin()
-		memory.free(ctx)
+		if ctx:connected() then
+			memory.free(ctx)
+		end
 	end
 	C.close(io:fd())
 end
 
 local function ssl_server_gc(io)
+	memory.free(io:ctx('pulpo_ssl_server_context_t *'))
 	C.close(io:fd())
 end
 local function ssl_addr(io)
@@ -426,8 +421,9 @@ function _M.connect(p, addr, opts, hdtype, ctx)
 	ctx.state = STATE.INIT
 	local io = p:newio(fd, hdtype or HANDLER_TYPE_SSL, ctx)
 	event.add_to(io, 'open')
-	ssl_connect(io) -- because its unclear that how to check failure of SSL_read/SSL_write caused by non-connected or not,
+	-- because its unclear that how to check failure of SSL_read/SSL_write caused by non-connected or not,
 	-- which is required to know to achieve lazy handshake, we assure ssl connection is established before any operation on that.
+	ssl_connect(io)
 	return io
 end
 

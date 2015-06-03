@@ -211,6 +211,10 @@ function http_request_mt:fin()
 		end
 		self.body_p[0] = ffi.NULL
 	end
+	if self.headers_p ~= ffi.NULL then
+		memory.free(self.headers_p)
+		self.headers_p = ffi.NULL
+	end
 end
 function http_request_mt:cdata_headers()
 	local p = ffi.new('pulpo_http_header_t')
@@ -305,7 +309,12 @@ function http_context_mt:init_buffer()
 	self.buffer, self.len, self.ofs = memory.alloc_typed('char', INITIAL_HEADER_BUFFER), INITIAL_HEADER_BUFFER, 0
 end
 function http_context_mt:fin()
-
+	-- TODO : reuse context_mt?
+	if self.buffer ~= ffi.NULL then
+		memory.free(self.buffer)
+		self.buffer = ffi.NULL
+	end
+	memory.free(self)
 end
 function http_context_mt:get_content_length_and_encoding(hd, hdlen)
 	local len, encode
@@ -329,10 +338,15 @@ end
 local empty_body_dummy = ""
 function http_context_mt:parse_body(io, obj, headers, read_start)
 	local ret
-	obj.headers_p = memory.dup('struct phr_header', headers, obj.num_headers[0])
+	obj.headers_p = memory.dup('struct phr_header', headers, obj.num_headers[0])	
 	-- copy current read buf to req object
 	obj.buf, obj.len = self.buffer, self.len
 	local body_buf_len, encode = self:get_content_length_and_encoding(headers, obj.num_headers[0])
+	if not body_buf_len then -- does not have body
+		obj.body_p[0] = ffi.cast('char *', empty_body_dummy)
+		obj.body_len[0] = 0
+		return obj
+	end
 	local body, body_ofs, body_buf_used = memory.alloc_typed('char', body_buf_len), 0
 	if self.ofs > read_start then
 		memory.move(body, obj.buf + read_start, self.ofs - read_start)
@@ -341,11 +355,6 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 		body_buf_used = 0
 	end
 	self:init_buffer() -- this changes self.ofs, so below here can call this.
-	if not body_buf_len then -- does not have body
-		obj.body_p[0] = ffi.cast('char *', empty_body_dummy)
-		obj.body_len[0] = 0
-		return obj
-	end
 	if encode == "chunked" then
 		-- process chunked encoding
 		memory.fill(self.decoder, ffi.sizeof(self.decoder[0]))
@@ -525,13 +534,18 @@ end
 
 local function http_accept(io)
 	local ctx = memory.alloc_typed('pulpo_http_context_t')
-	ctx:init_buffer()
 	assert(ctx ~= ffi.NULL, "error alloc context")
+	ctx:init_buffer()
 	return ctx:accept(io)
 end
 
 local function http_gc(io)
 	io:ctx('pulpo_http_context_t*'):fin()
+	C.close(io:fd())
+end
+
+local function http_server_gc(io)
+	memory.free(io:ctx('void *'))
 	C.close(io:fd())
 end
 
@@ -541,7 +555,7 @@ end
 
 HANDLER_TYPE_HTTP = poller.add_handler("http", http_read, http_write, http_gc, http_addr)
 HANDLER_TYPE_HTTP_SERVER = poller.add_handler("http_server", http_server_read, http_server_write, http_gc, http_addr)
-HANDLER_TYPE_HTTP_LISTENER = poller.add_handler("http_listen", http_accept, nil, http_gc)
+HANDLER_TYPE_HTTP_LISTENER = poller.add_handler("http_listen", http_accept, nil, http_server_gc)
 
 function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_http_context_t')

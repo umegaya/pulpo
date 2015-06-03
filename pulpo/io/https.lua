@@ -52,6 +52,17 @@ end
 function https_context_mt:writev(io, vec, len)
 	return ssl.rawwritev(io, vec, len)
 end
+function https_context_mt:fin()
+	local connected = self.ssl:connected()
+	self.ssl:fin()
+	if self.buffer ~= ffi.NULL then
+		memory.free(self.buffer)
+		self.buffer = ffi.NULL
+	end
+	if connected then
+		memory.free(self)
+	end
+end
 ffi.metatype('pulpo_https_context_t', https_context_mt)
 
 
@@ -76,13 +87,18 @@ end
 
 local function https_accept(io)
 	local ctx = memory.alloc_typed('pulpo_https_context_t')
-	ctx:init_buffer()
 	assert(ctx ~= ffi.NULL, "error alloc context")
+	ctx:init_buffer()
 	return ctx:accept(io)
 end
 
 local function https_gc(io)
 	io:ctx('pulpo_https_context_t*'):fin()
+	C.close(io:fd())
+end
+
+local function https_server_gc(io)
+	memory.free(io:ctx('pulpo_https_server_context_t*'))
 	C.close(io:fd())
 end
 
@@ -93,7 +109,7 @@ end
 
 HANDLER_TYPE_HTTPS = poller.add_handler("https", https_read, https_write, https_gc, https_addr)
 HANDLER_TYPE_HTTPS_SERVER = poller.add_handler("https_server", https_server_read, https_server_write, https_gc, https_addr)
-HANDLER_TYPE_HTTPS_LISTENER = poller.add_handler("https_listen", https_accept, nil, https_gc)
+HANDLER_TYPE_HTTPS_LISTENER = poller.add_handler("https_listen", https_accept, nil, https_server_gc)
 
 function _M.connect(p, addr, opts)
 	local ctx = memory.alloc_typed('pulpo_https_context_t')
