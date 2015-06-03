@@ -2,7 +2,6 @@ local ffi = require 'ffiex.init'
 local _M = {}
 local C = ffi.C
 
-local TRACE = false
 local mtrace = {}
 local total_alloc = 0
 local total_free = 0
@@ -67,7 +66,7 @@ ffi.cdef [[
 
 function _M.alloc_fill(sz, fill)
 	local p = ffi.gc(C.malloc(sz), nil)
-if TRACE then
+if _M.TRACE then
 	mtrace[tostring(p)] = get_mtrace_info(sz)
 	total_alloc = total_alloc + sz
 	check_trace_consistency()
@@ -88,7 +87,7 @@ end
 
 function _M.alloc(sz)
 	local p = ffi.gc(C.malloc(sz), nil)
-if TRACE then
+if _M.TRACE then
 	mtrace[tostring(p)] = get_mtrace_info(sz)
 	total_alloc = total_alloc + sz
 	check_trace_consistency()
@@ -112,7 +111,7 @@ function _M.strdup(str)
 		return p
 	else
 		local p = C.strdup(str)
-if TRACE then
+if _M.TRACE then
 		if p ~= nil then
 			local sz = C.strlen(str) + 1
 			mtrace[tostring(ffi.cast('void *', p))] = get_mtrace_info(sz)
@@ -134,7 +133,7 @@ end
 
 function _M.realloc(p, sz)
 	--logger.info('reallo from', debug.traceback())
-if not TRACE then
+if not _M.TRACE then
 	local p = ffi.gc(C.realloc(p, sz), nil)
 	return p ~= ffi.NULL and p or nil
 else
@@ -169,7 +168,7 @@ end
 
 function _M.managed_alloc(sz)
 	local p = ffi.gc(C.malloc(sz), _M.free)
-if TRACE then
+if _M.TRACE then
 	mtrace[tostring(p)] = get_mtrace_info(sz)
 	total_alloc = total_alloc + sz
 end
@@ -180,7 +179,7 @@ function _M.managed_alloc_typed(ct, sz)
 	local malloc_info = malloc_info_list[ct]
 	local p = C.malloc((sz or 1) * malloc_info.sz)
 	if p == ffi.NULL then return nil end
-if TRACE then
+if _M.TRACE then
 	local sz = malloc_info.sz * (sz or 1)
 	mtrace[tostring(p)] = get_mtrace_info(sz)
 	total_alloc = total_alloc + sz
@@ -234,7 +233,7 @@ function _M.free(p)
 	if _M.DEBUG then
 		logger.info('free:', p, debug.traceback())
 	end
-if TRACE then
+if _M.TRACE then
 	local m = mtrace[tostring(ffi.cast('void *', p))]
 	if m then
 		mtrace[tostring(ffi.cast('void *', p))] = nil
@@ -251,7 +250,7 @@ function _M.smart(p)
 end
 
 function _M.dump_trace(show_ptrlist)
-	if TRACE then
+	if _M.TRACE then
 		check_trace_consistency(show_ptrlist)
 		logger.info('memtrace', total_alloc, total_free, total_alloc - total_free, "gc", collectgarbage("count"))
 	end
