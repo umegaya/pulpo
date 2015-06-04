@@ -198,6 +198,7 @@ http_request_mt.__index = http_request_mt
 function http_request_mt:init()
 	self.buf = ffi.NULL
 	self.body_p[0] = ffi.NULL
+	self.headers_p = ffi.NULL
 	return self
 end
 function http_request_mt:fin()
@@ -450,9 +451,7 @@ end
 function http_context_mt:read_response(io)
 	local r 
 ::retry::
-	--print('start resp read')
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
-	--print('end resp read', r, '['..ffi.string(self.buffer, r)..']')
 	local prevbuflen = self.ofs
 	if r then
 		self.ofs = self.ofs + r
