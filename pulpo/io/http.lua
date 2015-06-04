@@ -119,11 +119,14 @@ local function make_request(header, body, blen)
 	local vec = new_vec()
 	header[1] = ("%s %s HTTP/1.1"..CRLF):format(header[1], header[2])
 	set_vector_to_str(vec, 0, header[1])
-	header[USER_AGENT] = LUACT_AGENT..AGENT_SEP..LUACT_RPC_VERSION..CRLF
+	if not header[USER_AGENT] then
+		header[USER_AGENT] = LUACT_AGENT..AGENT_SEP..LUACT_RPC_VERSION
+	end
 	set_vector_to_str(vec, idx, USER_AGENT)
 	set_vector_to_str(vec, idx + 1, HEADER_SEP)
 	set_vector_to_str(vec, idx + 2, header[USER_AGENT])
-	idx = idx + 3
+	set_vector_to_str(vec, idx + 3, CRLF)
+	idx = idx + 4
 	if body and blen then
 		if not header[CONTENT_LENGTH] then
 			header[CONTENT_LENGTH] = tostring(tonumber(blen))..CRLF
