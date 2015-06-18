@@ -302,6 +302,10 @@ function http_header_mt:luact_msgid()
 	local id = self:getstr(X_LUACT_MSGID)
 	return id and tonumber(id) or 0
 end
+function http_header_mt:luact_msg_kind() 
+	local id = self:getstr(USER_AGENT)
+	return id and tonumber(id:match('Luact-No-RPC:([0-9])+$')) or nil
+end
 ffi.metatype('pulpo_http_header_t', http_header_mt)
 
 

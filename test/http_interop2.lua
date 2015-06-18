@@ -24,7 +24,7 @@ pulpo.run({
 		local resp = s:read()
 		local status, headers, b, blen = resp:payload()
 		if headers["Server"] == "gws" then
-			assert(status == 200)
+			assert(status == 200 or status == 301)
 			assert(headers["Alternate-Protocol"]:match('quic'))
 		else
 			assert(status == 302)
