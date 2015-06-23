@@ -178,6 +178,9 @@ end
 function addr_index:init()
 	self.len[0] = (ffi.sizeof('pulpo_addr_t') - ffi.sizeof('socklen_t'))
 end
+function addr_index:hostname()
+	return _M.inet_namebyhost(self.p)
+end
 function addr_index:as_machine_id()
 	return _M.numeric_ipv4_addr_from_sockaddr(self.p)
 end
