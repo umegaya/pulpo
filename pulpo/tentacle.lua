@@ -98,6 +98,7 @@ end
 function _M.resume(co, ...)
 	if not co then
 		logger.report('invalid coroutine:', debug.traceback())
+		return
 	end
 	co[2] = nil -- no more cancelable by previous object
 	local ok, r = coroutine.resume(co[1], ...)

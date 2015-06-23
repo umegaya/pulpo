@@ -28,6 +28,20 @@ local default_methods = {
 	like = function (t, pattern)
 		return t.name:match(pattern)
 	end,
+	search = function (t, filter)
+		if filter(t) then
+			return true
+		else
+			for i=1,t.len do
+				local a = t.args[i]
+				if type(a) == 'table' and a.set_bt then
+					if filter(a) then
+						return true
+					end
+				end
+			end
+		end
+	end,
 	set_bt = function (t)
 		t.bt = "\n"..debug.traceback()
 	end,

@@ -18,14 +18,22 @@ function _M.initialize()
 	PT = ffi.load("pthread")
 end
 
+local function common_err_handler(e, name)
+	if type(e) ~= 'table' or (not e.set_bt) then
+		return exception.new('generics', name, e)
+	else
+		e:set_bt()
+		return e
+	end
+end
 local function finalizer_err_handler(e)
-	return exception.new('generics', 'finalizer', e)
+	return common_err_handler(e, 'finalizer')
 end
 local function rwlock_err_handler(e)
-	return exception.new('generics', 'rwlock_ptr', e)
+	return common_err_handler(e, 'rwlock_ptr')
 end
 local function mutex_err_handler(e)
-	return exception.new('generics', 'mutex_ptr', e)
+	return common_err_handler(e, 'mutex_ptr')
 end
 
 local created = {}
@@ -161,9 +169,14 @@ function _M.erastic_map(type, name)
 				end
 				e = t.list[t.used]
 				e.name = memory.strdup(name)
-				init(e, ...)
-				t.used = (t.used + 1)
-				return e.data
+				local ok, r = pcall(init, e, ...)
+				if ok then
+					t.used = (t.used + 1)
+					return e.data
+				else
+					memory.free(e.name)
+					return nil, r
+				end
 			end,
 			remove = function (t, name)
 				local e, found
