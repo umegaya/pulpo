@@ -329,5 +329,9 @@ function _M.hex_escape(bin, blen)
 	return table.concat(t)
 end
 
+function _M.devide_url_into_host_and_path(url)
+	return url:match('([^%+]-%+?[^%+]*://[^/]+)(.*)')
+end
+
 return _M
 
