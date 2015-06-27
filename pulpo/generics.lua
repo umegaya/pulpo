@@ -144,7 +144,7 @@ function _M.erastic_map(type, name)
 				if (t.used + space) > t.size then
 					local p = memory.realloc_typed(elemtype, t.list, t.size * 2)
 					if p then
-						--logger.notice('emap:size:', t.size, t.size * 2, t.list, p)
+						-- logger.notice('emap:size:', t.size, t.size * 2, t.list, p)
 						t.list = p 
 						t.size = t.size * 2
 					else
@@ -156,7 +156,6 @@ function _M.erastic_map(type, name)
 				return t:put(name)
 			end,
 			put = function (t, name, init, ...)
-				t:reserve(1) -- at least 1 entry room
 				local e
 				for i=0,t.used-1,1 do
 					e = t.list[i]
@@ -167,6 +166,7 @@ function _M.erastic_map(type, name)
 				if _G.type(init) ~= "function" then
 					return nil
 				end
+				t:reserve(1) -- assure at least 1 entry room
 				e = t.list[t.used]
 				e.name = memory.strdup(name)
 				local ok, r = pcall(init, e, ...)

@@ -231,7 +231,7 @@ end
 
 function _M.free(p)
 	if _M.DEBUG then
-		logger.info('free:', p, debug.traceback())
+		logger.info('free:', p, type(p), debug.traceback())
 	end
 if _M.TRACE then
 	local m = mtrace[tostring(ffi.cast('void *', p))]
