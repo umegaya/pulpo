@@ -48,6 +48,7 @@ local default_methods = {
 	raise = function (t)
 		error(t)
 	end,
+	recoverable = false,
 }
 local default_metamethods = {
 	__tostring = function (t)
@@ -67,14 +68,13 @@ local function def_exception(name, decl)
 		rawset(tmp1, k, dv or v)
 	end
 	tmp1.name = name
-	local tmp2 = {}
 	for k,v in pairs(default_metamethods) do
 		local dv = rawget(decl, k)
-		rawset(tmp2, k, dv or v)
+		rawset(tmp1, k, dv or v)
 	end
-	tmp2.__index = tmp1
-	tmp2.__cert__ = cert
-	return tmp2
+	tmp1.__index = tmp1
+	tmp1.__cert__ = cert
+	return tmp1
 end
 
 local function new_exception(name, bt, ...)
@@ -130,7 +130,9 @@ end
 
 _M.define('not_found')
 _M.define('invalid')
-_M.define('runtime')
+_M.define('runtime', {
+	recoverable = true,
+})
 _M.define('malloc', {
 	message = function (t)
 		if t.args[2] then

@@ -70,11 +70,11 @@ function taskgrp_index.loop(t)
 		q[idx] = nil
 		local ok, r = pcall(fn[2], fn[3])
 		if ok and (r ~= false) then
+			-- schedule next call
 			local nxt = t:get_dest_index(fn[1])
 			local q = t.queue[nxt]
 			table.insert(q, fn)
 			fn[4] = q
-			fn[5] = #q
 		end
 	end
 	t.index = t.index + 1
@@ -85,9 +85,16 @@ function taskgrp_index.close(t)
 end
 local task_element_mt = { __index = {} }
 function task_element_mt.__index:__cancel(co)
-	logger.debug('task cancel', self[4][self[5]][3], co)
-	assert(self[4][self[5]][3] == co)
-	table.remove(self[4], self[5])
+	for i=1,#self[4] do
+		if self[4][i] == self then
+			-- this only valid cancel of sleep
+			-- logger.debug('task cancel', self[4][i][3], co)
+			-- assert(self[4][i][3] == co)
+			table.remove(self[4], i)
+			return
+		end
+	end
+	assert(false, tostring(self).." cannot found in queue: "..self[4])
 end
 function taskgrp_index.add(t, start, intv, fn, arg)
 	local sidx = t:get_duration_index(start)
@@ -97,7 +104,6 @@ function taskgrp_index.add(t, start, intv, fn, arg)
 	local tuple = {iidx, fn, arg, q}
 	local r = setmetatable(tuple, task_element_mt)
 	table.insert(q, r)
-	tuple[5] = #q
 	return r
 end
 -- sleep

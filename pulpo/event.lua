@@ -225,7 +225,7 @@ function _M.join(timeout, ...)
 	local emit,required = 0,timeout and (#list - 1) or #list
 	while true do
 		local tmp = {tentacle.yield(list)}
-		-- logger.warn('wait emit:', unpack(tmp))
+		-- logger.warn('join emit:', unpack(tmp))
 		local rev = tmp[2]
 		tmp[2] = rev.emitter
 		if timeout and rev == timeout then
