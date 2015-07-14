@@ -118,6 +118,7 @@ local SO_SNDBUF = ffi_state.defs.SO_SNDBUF
 local SO_RCVBUF = ffi_state.defs.SO_RCVBUF
 local SO_BROADCAST = ffi_state.defs.SO_BROADCAST
 local AF_INET = ffi_state.defs.AF_INET
+local AF_INET6 = ffi_state.defs.AF_INET6
 local AF_UNIX = ffi_state.defs.AF_UNIX
 
 local F_SETFL = ffi_state.defs.F_SETFL
@@ -264,16 +265,22 @@ function _M.inet_hostbyname(addr, addrp, socktype)
 	end
 	-- TODO : is it almost ok to use first entry of addrinfo?
 	-- create socket and try to bind/connect seems costly for checking
-	if addrinfo_buffer[0] ~= ffi.NULL then
-		ab = addrinfo_buffer[0]
-		af = ab.ai_family
-		protocol = ab.ai_protocol
-		r = ab.ai_addrlen
-		ffi.copy(addrp, ab.ai_addr, r)
-		-- TODO : cache addrinfo_buffer[0] with addr as key
-		C.freeaddrinfo(addrinfo_buffer[0])
-		addrinfo_buffer[0] = ffi.NULL
+	local ab = addrinfo_buffer[0]
+	while ab ~= nil do
+		if (not af) or (ab.ai_family == AF_INET) then
+			af = ab.ai_family
+			protocol = ab.ai_protocol
+			r = ab.ai_addrlen
+			ffi.copy(addrp, ab.ai_addr, r)
+		end
+		if af == AF_INET then
+			break
+		end
+		ab = ab.ai_next
 	end
+	-- TODO : cache addrinfo_buffer[0] with addr as key
+	C.freeaddrinfo(addrinfo_buffer[0])
+	addrinfo_buffer[0] = nil
 	return r, af, socktype, protocol
 end
 function _M.inet_namebyhost(addrp, withport, dst, len)
@@ -282,8 +289,14 @@ function _M.inet_namebyhost(addrp, withport, dst, len)
 		len = 256
 	end
 	local sa = ffi.cast('struct sockaddr_in*', addrp)
-	local sin_addr_p = (ffi.cast('char *', addrp) + ffi.offsetof('struct sockaddr_in', 'sin_addr'))
-	local p = C.inet_ntop(sa.sin_family, sin_addr_p, dst, len)
+	local af = sa.sin_family
+	local sin_addr_p
+	if af == AF_INET then
+		sin_addr_p = (ffi.cast('char *', addrp) + ffi.offsetof('struct sockaddr_in', 'sin_addr'))
+	elseif af == AF_INET6 then
+		sin_addr_p = (ffi.cast('char *', addrp) + ffi.offsetof('struct sockaddr_in6', 'sin6_addr'))
+	end		
+	local p = C.inet_ntop(af, sin_addr_p, dst, len)
 	if p == ffi.NULL then
 		exception.raise('invalid', 'addr data', ffi.errno(), sa.sin_family)
 	else

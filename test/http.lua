@@ -38,7 +38,7 @@ local http = require 'pulpo.io.http'
 local p = poller.new()
 local limit,finish,cfinish = NCLIENTS * NITER,0,0
 
-tentacle.new(function ()
+tentacle(function ()
 	local s = http.listen(p, '0.0.0.0:8008')
 	while true do
 		-- print('accept start:')
@@ -64,7 +64,7 @@ tentacle.new(function ()
 			end
 		end, _fd)	
 	end
-end)()
+end)
 
 local start = util.clock()
 

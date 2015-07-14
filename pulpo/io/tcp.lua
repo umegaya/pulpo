@@ -101,7 +101,7 @@ _M.rawread = tcp_read
 
 local function on_write_error(io, ret)
 	local eno = errno.errno()
-	-- print(io:fd(), 'write fails', ret, eno, ffi.errno() )
+	-- print(io:fd(), 'write fails', ret, eno, ffi.errno(), io:ctx('pulpo_tcp_context_t*').addr )
 	if eno == EAGAIN or eno == EWOULDBLOCK then
 		if not io:wait_write() then
 			raise('pipe')

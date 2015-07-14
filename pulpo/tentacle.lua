@@ -64,17 +64,25 @@ end
 
 
 -- late execution
+local noop_canceler = {
+	__cancel = function (self, co)
+	end,
+}
+local function pause_handler(fn)
+	logger.info('pause_handler')
+	return fn(_M.yield(noop_canceler))
+end
 function _M.new(body)
-	return setmetatable({
-		body
-	}, tentacle_mt)
+	local c = new()
+	_M.resume(c, pause_handler, err_handler, body)
+	return c
 end
 function _M.running()
 	return map[coroutine.running()]
 end
 --_M.yield = coroutine.yield
 function _M.yield(obj)
-	if (not obj) then
+	if not obj then
 		logger.report('invalid yield result', obj, debug.traceback())
 	end
 	if _M.TRACE then
@@ -106,16 +114,6 @@ function _M.resume(co, ...)
 	if _M.TRACE then
 		co.rbt = debug.traceback()
 	end
-	--[[
-	if ok and (not co[2]) then
-		local bt = debug.traceback()
-		if not bt:match('router.lua') then
-			logger.report('invalid resume result', co[1], coroutine.status(co[1]), tostring(r), debug.traceback())
-		end
-	elseif not ok then
-		logger.report('resume end in error', r)
-	end
-	]]
 end
 function _M.cancel_handler(obj, co)
 	obj:__cancel(co)
@@ -132,7 +130,7 @@ function _M.cancel(co)
 			-- that means, the tentacle keep on running after this cancel call, which may cause a lot of difficult bug.
 			error('can not cancel running tentacle:'..tostring(co[1])..'@'..tostring(co))
 		else
-			logger.warn('no canceler', co[1], 'it yields under un-cancelable operation?', coroutine.status(co[1]))
+			logger.warn('no canceler', co[1], co, 'it yields under un-cancelable operation?', coroutine.status(co[1]), debug.traceback())
 		end
 	end
 end
