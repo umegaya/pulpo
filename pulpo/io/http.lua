@@ -196,8 +196,19 @@ end
 
 
 --> pulpo_http_request cdata
+_G.global_dump = false
 local http_request_mt = {}
 http_request_mt.__index = http_request_mt
+http_request_mt.__cache = {}
+function new_http_request()
+	if #http_request_mt.__cache > 0 then
+		return table.remove(http_request_mt.__cache)
+	else
+		local r = memory.alloc_typed('pulpo_http_request_t')
+		r:init()
+		return r
+	end
+end
 function http_request_mt:init()
 	self.buf = ffi.NULL
 	self.body_p[0] = ffi.NULL
@@ -219,9 +230,11 @@ function http_request_mt:fin()
 		memory.free(self.headers_p)
 		self.headers_p = ffi.NULL
 	end
+	table.insert(self.__cache, self)
 end
-function http_request_mt:cdata_headers()
-	local p = ffi.new('pulpo_http_header_t')
+local header_work = memory.alloc_typed('pulpo_http_header_t')
+function http_request_mt:cdata_headers(use_tmp)
+	local p = use_tmp and header_work or ffi.new('pulpo_http_header_t')
 	p.num_headers = self.num_headers[0]
 	p.headers = self.headers_p
 	return p
@@ -236,7 +249,7 @@ function http_request_mt:path()
 	return ffi.string(self.path_p[0], self.path_len[0])
 end
 function http_request_mt:headers()
-	return self:cdata_headers():as_table()
+	return self:cdata_headers(true):as_table()
 end
 function http_request_mt:raw_payload()
 	return self:method(), self:path(),
@@ -254,6 +267,16 @@ ffi.metatype('pulpo_http_request_t', http_request_mt)
 --> pulpo_http_response cdata
 local http_response_mt = util.copy_table(http_request_mt)
 http_response_mt.__index = http_response_mt
+http_response_mt.__cache = {}
+function new_http_response()
+	if #http_response_mt.__cache > 0 then
+		return table.remove(http_response_mt.__cache)
+	else
+		local r = memory.alloc_typed('pulpo_http_response_t')
+		r:init()
+		return r
+	end
+end
 function http_response_mt:status()
 	return self.status_p[0]
 end
@@ -286,6 +309,7 @@ function http_header_mt:as_table()
 	local r = {}
 	for i=0, tonumber(self.num_headers)-1 do
 		local h = self.headers[i]
+		-- logger.info('as_table', h.name, h.name_len, h.value, h.value_len)
 		r[ffi.string(h.name, h.name_len)] = ffi.string(h.value, h.value_len)
 	end
 	return r	
@@ -315,6 +339,20 @@ http_context_mt.__index = http_context_mt
 http_context_mt.header_work = memory.alloc_fill_typed('struct phr_header', MAX_HEADERS)
 function http_context_mt:init_buffer()
 	self.buffer, self.len, self.ofs = memory.alloc_typed('char', INITIAL_HEADER_BUFFER), INITIAL_HEADER_BUFFER, 0
+end
+function http_context_mt:reserve_buffer(sz)
+	local tmp = self.len
+	while (tmp - self.ofs) < sz do
+		tmp = tmp * 2
+	end
+	if tmp ~= self.len then
+		local ptr = memory.realloc_typed('char', self.buffer, tmp)
+		if not ptr then
+			exception.raise('malloc', 'char', tmp)
+		end
+		self.buffer = ptr
+		self.len = tmp
+	end
 end
 function http_context_mt:fin()
 	-- TODO : reuse context_mt?
@@ -346,7 +384,7 @@ end
 local empty_body_dummy = ""
 function http_context_mt:parse_body(io, obj, headers, read_start)
 	local ret
-	obj.headers_p = memory.dup('struct phr_header', headers, obj.num_headers[0])	
+	obj.headers_p = memory.dup('struct phr_header', headers, obj.num_headers[0])
 	-- copy current read buf to req object
 	obj.buf, obj.len = self.buffer, self.len
 	local body_buf_len, encode = self:get_content_length_and_encoding(headers, obj.num_headers[0])
@@ -355,14 +393,17 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 		obj.body_len[0] = 0
 		return obj
 	end
-	local body, body_ofs, body_buf_used = memory.alloc_typed('char', body_buf_len), 0
+	local body_ofs = 0
+	local body, body_buf_used
 	if self.ofs > read_start then
-		memory.move(body, obj.buf + read_start, self.ofs - read_start)
+		body = memory.alloc_typed('char', math.max(body_buf_len, tonumber(self.ofs - read_start)))
+		ffi.copy(body, obj.buf + read_start, self.ofs - read_start)
 		body_buf_used = self.ofs - read_start
 	else
+		body = memory.alloc_typed('char', body_buf_len)
 		body_buf_used = 0
 	end
-	self:init_buffer() -- this changes self.ofs, so below here can call this.
+	self:init_buffer() -- this changes self.ofs, so below here we can call this.
 	if encode == "chunked" then
 		-- process chunked encoding
 		memory.fill(self.decoder, ffi.sizeof(self.decoder[0]))
@@ -384,9 +425,7 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 				exception.raise('http', 'malform request', ffi.string(body, body_ofs))
 			end
 			body_ofs = body_ofs + obj.body_len[0]
-			if ret ~= -2 then
-				--print('parse finished', ret, body_ofs, body_buf_used)
-			end
+			assert(body_buf_used >= body_ofs)
 		end
 		-- no buff to process or not enought buffer received
 		if (not ret) or (ret == -2) then
@@ -400,6 +439,15 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 			body_buf_used = body_ofs + ret
 			goto chunked_retry
 		end
+		-- return value. 
+		-- ret > 0, it means there is next data in body_ofs + ret ~ body_buf_used
+		-- set this value
+		if ret > 0 then
+			body_buf_len = body_ofs + ret
+		else
+			assert((body_ofs + ret) == body_buf_used)
+			body_buf_len = body_buf_used
+		end
 	else
 		-- normal read loop upto clen bytes
 		while body_buf_used < body_buf_len do
@@ -412,12 +460,26 @@ function http_context_mt:parse_body(io, obj, headers, read_start)
 		end
 		body_ofs = body_buf_used
 	end
+	if body_buf_used > body_buf_len then
+		-- no chunked and already enough buffer received.
+		local required = body_buf_used - body_buf_len
+		-- this means current read buffer length is longer than actual response length, 
+		-- should have been reading next response / request. so longer part of body_buf_len
+		-- copy to self.buffer for next request / response parsing.
+		self:reserve_buffer(required)
+		-- logger.info('buffer', '[['..ffi.string(body + body_buf_len, required)..']]')
+		-- logger.info('b4copy', self.buffer, body, body_buf_len, body_buf_used, required, self.len)
+		ffi.copy(self.buffer, body + body_buf_len, required)
+		self.ofs = required
+		body_ofs = body_buf_len
+	end
 	obj.body_p[0] = body
 	obj.body_len[0] = body_ofs
 	return obj
 end
 function http_context_mt:read_request(io)
-	local r, ret, req
+	local r, ret
+	local req = new_http_request()
 ::retry::
 	-- logger.warn(io:fd(), 'req read start', self, self.len, self.ofs)
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
@@ -434,7 +496,6 @@ function http_context_mt:read_request(io)
 			self.len = self.len * 2
 		end
 	end
-	req = self.req:init()
 	req.num_headers[0] = MAX_HEADERS
 	ret = http_parser.phr_parse_request(
 		self.buffer, self.ofs, 
@@ -457,6 +518,7 @@ function http_context_mt:read_request(io)
 end
 function http_context_mt:read_response(io)
 	local r 
+	local resp = new_http_response()
 ::retry::
 	r = self:read(io, self.buffer + self.ofs, self.len - self.ofs)
 	local prevbuflen = self.ofs
@@ -471,7 +533,6 @@ function http_context_mt:read_response(io)
 			self.len = self.len * 2
 		end
 	end
-	local resp = self.resp:init()
 	resp.num_headers[0] = MAX_HEADERS
 	ret = http_parser.phr_parse_response(self.buffer, self.ofs, resp.minor_version, resp.status_p,
 		ffi.cast('const char **', resp.body_p), resp.body_len, self.header_work,
