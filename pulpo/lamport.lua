@@ -105,7 +105,7 @@ function hlc_mt:next()
 	else
 		self:pack_values(ts, 0)
 	end
-	-- 	logger.error('clock:', self)
+	-- logger.error('clock:', self)
 	return self
 end
 function hlc_mt:set_walltime(wt)

@@ -191,6 +191,9 @@ function _M.msec_walltime()
 	local s,us = _M.clock_pair()
 	return math.ceil(tonumber((s * 1000) + (us / 1000)))
 end
+function _M.sec2walltime(sec)
+	return math.ceil(sec * 1000)
+end
 local fmt_buf = {}
 local fmt_buf_index = 0
 local fmt_buf_num = 16
