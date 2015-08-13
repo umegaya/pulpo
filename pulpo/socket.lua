@@ -51,9 +51,10 @@ function _M.htonl(x)
 	end
 end
 
-function _M.htonll(x, check)
+function _M.htonll(x)
 	if LITTLE_ENDIAN then
 		local r = ffi.new('uint64_t', (_M.htonl( x % 0x100000000 ) * 0x100000000)) + _M.htonl( x / 0x100000000 )
+		--[[
 		if not check then
 			if (tonumber(_M.ntohll(r, true)) ~= tonumber(x)) then
 				print(r, x)
@@ -61,6 +62,7 @@ function _M.htonll(x, check)
 				print(util.sprintf('%llx', 32, _M.ntohll(r, true)), util.sprintf('%llx', 32, x), _M.ntohll(r, true) - x)
 			end
 		end
+		]]
 		return r
 	else
 		return x

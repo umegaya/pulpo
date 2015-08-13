@@ -35,6 +35,13 @@ exception.define('poller')
 ---------------------------------------------------
 -- system independent poller object's API
 ---------------------------------------------------
+--[[
+	io module
+	io.connect/accept => only successful accepted/connected io is returned. failed io object must be finalized by accept/connect routine itself.
+	 if unrecoverable error happens, please throw error.
+	io.read/io.write => if unrecoverable error is happen, please throw error or return nil. don't indicate error in that way if error is recoverable.
+	 if unrecoverable error happens, these routine should not finalize io object by itself. its callers responsibility to do that
+]]
 function io_index.read(t, ptr, len, ...)
 	return read_handlers[t:type()](t, ptr, len, ...)
 end
@@ -151,8 +158,9 @@ function _M.finalize()
 	end
 	if iolist ~= ffi.NULL then
 		for i=0,_M.config.maxfd - 1,1 do
-			-- print('fin:', iolist[i]:fd())
+			--print('fin:', iolist[i]:fd(), iolist[i]:initialized())
 			iolist[i]:fin()
+			--print('fin end:', iolist[i]:fd())
 		end
 		-- iolist itself allocated from poller module.
 		-- so memory management is done in each modules

@@ -125,6 +125,7 @@ local function config_logger(opts)
 		typedef struct pulpo_logger_data {
 			bool verbose;
 			char *logdir;
+			double start_at;
 		} pulpo_logger_data_t;
 	]]
 	-- make default logger thread safe
@@ -132,6 +133,7 @@ local function config_logger(opts)
 		local o = memory.alloc_typed('pulpo_logger_data_t')
 		o.verbose = opts.verbose and opts.verbose~="false" or false
 		o.logdir = opts.logdir and memory.strdup(opts.logdir) or ffi.NULL
+		o.start_at = util.clock()
 		return 'pulpo_logger_data_t', o
 	end)
 	_M.verbose = ret.verbose
@@ -142,7 +144,7 @@ local function config_logger(opts)
 		}))
 		logger.info('logging start at', logdir)
 	else
-		local start_at = util.clock()
+		local start_at = ret.start_at
 		log.redirect("default", function (setting, ...)
 			PT.pthread_mutex_lock(_M.logger_mutex)
 			term[setting.color]()

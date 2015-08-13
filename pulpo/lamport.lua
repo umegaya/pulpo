@@ -53,12 +53,22 @@ end
 function hlc_mt:v(idx)
 	return tonumber(socket.ntohl(self.layout.data[idx]))
 end
+function hlc_mt:is_zero()
+	return self == _M.ZERO_HLC
+end
 function hlc_mt:pack_values(wt, lc)
 	self.layout.data[0] = socket.htonl(math.floor(wt / bit.lshift(1, 10)))
 	self.layout.data[1] = socket.htonl(bit.lshift(bit.band(wt, bit.lshift(1, 10) - 1), 22) + lc)
 end
 function hlc_mt:least_greater_of(hlc)
 	self:pack_values(hlc:walltime(), hlc:logical_clock() + 1)
+end
+function hlc_mt:most_lesser_of(hlc)
+	if hlc:logical_clock() > 0 then
+		self:pack_values(hlc:walltime(), hlc:logical_clock() - 1)
+	else
+		self:pack_values(hlc:walltime() - 1, _M.MAX_HLC_LOGICAL_CLOCK)
+	end
 end
 function hlc_mt:logical_clock()
 	return bit.band(self:v(1), _M.MAX_HLC_LOGICAL_CLOCK)
@@ -95,6 +105,7 @@ function hlc_mt:next()
 	else
 		self:pack_values(ts, 0)
 	end
+	-- logger.error('clock:', self)
 	return self
 end
 function hlc_mt:set_walltime(wt)
@@ -104,6 +115,9 @@ function hlc_mt:walltime()
 	return (self:v(0) * bit.lshift(1, 10)) + bit.rshift(self:v(1), 22)
 end
 function hlc_mt:copy_to(to)
+	-- if self:walltime() == _M.MAX_HLC_WALLTIME then
+	-- 	assert(self:logical_clock() == _M.MAX_HLC_LOGICAL_CLOCK, debug.traceback())
+	-- end
 	to.value = self.value
 end
 function hlc_mt:clone(gc)
@@ -111,12 +125,18 @@ function hlc_mt:clone(gc)
 	self:copy_to(p)
 	return p[0]
 end
+-- causion : this modifies self
 function hlc_mt:add_walltime(sec)
 	local wt = self:walltime()
 	if sec > 0 then
 		wt = wt + math.floor(sec * 1000)
 	else
 		wt = wt + math.ceil(sec * 1000)
+		if wt < 0 then
+			logger.warn('walltime underflow:', sec)
+			assert(false)
+			wt = 0
+		end
 	end
 	self:set_walltime(wt)
 	return self
@@ -140,6 +160,9 @@ function hlc_mt:__le(lc)
 	end
 end
 function hlc_mt:__lt(lc)
+	if not lc then
+		logger.error('lamport < : lc == nil')
+	end
 	if self:walltime() < lc:walltime() then
 		return true
 	elseif self:walltime() > lc:walltime() then
@@ -182,8 +205,10 @@ end
 function hlc_gen_mt:now()
 	return self.clock
 end
+local hlc_work = memory.alloc_typed('pulpo_hlc_t') 
 function hlc_gen_mt:issue()
-	return self.clock:next()
+	self.clock:next():copy_to(hlc_work)
+	return hlc_work[0]
 end
 ffi.metatype('pulpo_hlc_generator_t', hlc_gen_mt)
 
@@ -289,5 +314,6 @@ function _M.debug_make_hlc(clock, msec)
 	return p
 end
 _M.ZERO_HLC = _M.debug_make_hlc(0, 0)
+_M.MAX_HLC = _M.debug_make_hlc(_M.MAX_HLC_LOGICAL_CLOCK, _M.MAX_HLC_WALLTIME)
 
 return _M

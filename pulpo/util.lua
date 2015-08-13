@@ -329,5 +329,17 @@ function _M.hex_escape(bin, blen)
 	return table.concat(t)
 end
 
+function _M.devide_url_into_host_and_path(url)
+	return url:match('([^%+]-%+?[^%+]*://[^/]+)(.*)')
+end
+
+function _M.random_byte_str(len)
+	local r = ""
+	for i=1,len do
+		r = r .. string.char(math.random(0, 255))
+	end
+	return r
+end
+
 return _M
 

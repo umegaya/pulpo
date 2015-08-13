@@ -2,6 +2,45 @@ local ffi = require 'ffiex.init'
 local _M = {}
 local C = ffi.C
 
+local mtrace = {}
+local total_alloc = 0
+local total_free = 0
+
+local function get_mtrace_info(sz)
+	local i 
+	local depth = 3
+	while true do
+		i = debug.getinfo(depth)
+		if not i then
+			assert(false)
+		end
+		if not i.source:match('pulpo/memory%.lua') then
+			break
+		end
+		depth = depth + 1
+	end
+	return { sz = sz, src = i.source, line = i.currentline}
+end
+local function check_trace_consistency(show_ptrlist)
+	local total = 0
+	local keys = {}
+	for k,v in pairs(mtrace) do
+		if show_ptrlist then 
+			table.insert(keys, k)
+		end
+		total = total + v.sz
+	end
+	if #keys > 0 then
+		table.sort(keys)
+		for i=1,#keys do
+			local m = mtrace[keys[i]]
+			logger.info(keys[i], m.sz, m.src..":"..m.line)
+		end
+	end
+	assert((total_alloc - total_free) == total, 
+		"total from list and sum does not match:"..tostring(total_alloc-total_free).."|"..tostring(total).." at "..debug.traceback())
+end
+
 -- malloc information list
 local malloc_info_list = setmetatable({}, {
 	__index = function (t, k)
@@ -27,6 +66,11 @@ ffi.cdef [[
 
 function _M.alloc_fill(sz, fill)
 	local p = ffi.gc(C.malloc(sz), nil)
+if _M.TRACE then
+	mtrace[tostring(p)] = get_mtrace_info(sz)
+	total_alloc = total_alloc + sz
+	check_trace_consistency()
+end
 	if p ~= ffi.NULL then
 		ffi.fill(p, sz, fill)
 		return p
@@ -43,6 +87,11 @@ end
 
 function _M.alloc(sz)
 	local p = ffi.gc(C.malloc(sz), nil)
+if _M.TRACE then
+	mtrace[tostring(p)] = get_mtrace_info(sz)
+	total_alloc = total_alloc + sz
+	check_trace_consistency()
+end
 	return p ~= ffi.NULL and p or nil
 end
 	
@@ -61,7 +110,16 @@ function _M.strdup(str)
 		end
 		return p
 	else
-		return C.strdup(str)
+		local p = C.strdup(str)
+if _M.TRACE then
+		if p ~= nil then
+			local sz = C.strlen(str) + 1
+			mtrace[tostring(ffi.cast('void *', p))] = get_mtrace_info(sz)
+			total_alloc = total_alloc + sz
+			check_trace_consistency()
+		end
+end
+		return p
 	end
 end
 
@@ -75,8 +133,30 @@ end
 
 function _M.realloc(p, sz)
 	--logger.info('reallo from', debug.traceback())
+if not _M.TRACE then
 	local p = ffi.gc(C.realloc(p, sz), nil)
 	return p ~= ffi.NULL and p or nil
+else
+	local m = mtrace[tostring(ffi.cast('void *', p))]
+	local is_null = (p == nil)
+	local tmp = ffi.gc(C.realloc(p, sz), nil)
+	if tmp ~= ffi.NULL then
+		mtrace[tostring(ffi.cast('void *', p))] = nil
+		mtrace[tostring(ffi.cast('void *', tmp))] = get_mtrace_info(sz)
+		if m then
+			total_free = total_free + m.sz
+		else
+			assert(is_null)
+		end
+		total_alloc = total_alloc + sz
+		check_trace_consistency()
+		return tmp
+	else
+		check_trace_consistency()	
+		return nil
+	end
+end
+
 end
 
 function _M.realloc_typed(ct, p, sz)
@@ -87,7 +167,11 @@ function _M.realloc_typed(ct, p, sz)
 end
 
 function _M.managed_alloc(sz)
-	local p = ffi.gc(C.malloc(sz), C.free)
+	local p = ffi.gc(C.malloc(sz), _M.free)
+if _M.TRACE then
+	mtrace[tostring(p)] = get_mtrace_info(sz)
+	total_alloc = total_alloc + sz
+end
 	return p ~= ffi.NULL and p or nil
 end
 
@@ -95,19 +179,12 @@ function _M.managed_alloc_typed(ct, sz)
 	local malloc_info = malloc_info_list[ct]
 	local p = C.malloc((sz or 1) * malloc_info.sz)
 	if p == ffi.NULL then return nil end
-	return ffi.gc(ffi.cast(malloc_info.t, p), C.free)
+if _M.TRACE then
+	local sz = malloc_info.sz * (sz or 1)
+	mtrace[tostring(p)] = get_mtrace_info(sz)
+	total_alloc = total_alloc + sz
 end
-
-function _M.managed_realloc(p, sz)
-	local p = ffi.gc(C.realloc(p, sz), C.free)
-	return p ~= ffi.NULL and p or nil
-end
-
-function _M.managed_realloc_typed(ct, p, sz)
-	local malloc_info = malloc_info_list[ct]
-	p = C.realloc(p, malloc_info.sz * (sz or 1))
-	if p == ffi.NULL then return nil end
-	return ffi.gc(ffi.cast(malloc_info.t, p), C.free)
+	return ffi.gc(ffi.cast(malloc_info.t, p), _M.free)
 end
 
 function _M.move(dst, src, sz)
@@ -154,13 +231,29 @@ end
 
 function _M.free(p)
 	if _M.DEBUG then
-		logger.info('free:', p, debug.traceback())
+		logger.info('free:', p, type(p), debug.traceback())
 	end
+if _M.TRACE then
+	local m = mtrace[tostring(ffi.cast('void *', p))]
+	if m then
+		mtrace[tostring(ffi.cast('void *', p))] = nil
+		total_free = total_free + m.sz
+	else
+		assert(false, "all allocated memory should traced:"..tostring(ffi.cast('void *', p)))
+	end
+end
 	C.free(p)
 end
 
 function _M.smart(p)
 	return ffi.gc(p, _M.free)
+end
+
+function _M.dump_trace(show_ptrlist)
+	if _M.TRACE then
+		check_trace_consistency(show_ptrlist)
+		logger.info('memtrace', total_alloc, total_free, total_alloc - total_free, "gc", collectgarbage("count"))
+	end
 end
 
 return _M

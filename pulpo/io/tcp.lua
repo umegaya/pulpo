@@ -61,7 +61,6 @@ local function tcp_connect(io)
 		elseif eno == ECONNREFUSED then
 			goto retry
 		else
-			io:close('error')
 			raise('syscall', 'connect', io:nfd())
 		end
 	end
@@ -81,7 +80,6 @@ local function tcp_read(io, ptr, len)
 	local n = C.recv(io:fd(), ptr, len, 0)
 	if n <= 0 then
 		if n == 0 then 
-			io:close('remote')
 			return nil
 		end
 		local eno = errno.errno()
@@ -94,7 +92,6 @@ local function tcp_read(io, ptr, len)
 			tcp_connect(io)
 			goto retry
 		else
-			io:close('error')
 			raise('syscall', 'read', io:nfd())
 		end
 	end
@@ -104,7 +101,7 @@ _M.rawread = tcp_read
 
 local function on_write_error(io, ret)
 	local eno = errno.errno()
-	-- print(io:fd(), 'write fails', ret, eno, ffi.errno() )
+	-- print(io:fd(), 'write fails', ret, eno, ffi.errno(), io:ctx('pulpo_tcp_context_t*').addr )
 	if eno == EAGAIN or eno == EWOULDBLOCK then
 		if not io:wait_write() then
 			raise('pipe')
@@ -125,10 +122,9 @@ local function on_write_error(io, ret)
 		if io:ctx('pulpo_tcp_context_t*').state == STATE.INIT then
 			tcp_connect(io)
 		else	
-			io:close('remote')
+			raise('pipe')
 		end	
 	else
-		io:close('error')
 		raise('syscall', 'write', io:nfd())
 	end
 	return true
@@ -147,6 +143,7 @@ end
 local function tcp_writev(io, vec, vlen)
 ::retry::
 --[[
+logger.notice(debug.traceback())
 for i=0,tonumber(vlen)-1 do
 	local v = vec[i]
 	logger.notice('vec', i, ("[%q]"):format(ffi.string(v.iov_base, v.iov_len)))
@@ -175,7 +172,7 @@ local ctx_work
 local function tcp_accept(io, hdtype, given_ctx)
 	local ctx
 ::retry::
-	-- print('tcp_accept:', io:fd())
+	-- print('tcp_accept:', io:fd(), given_ctx)
 	if given_ctx then
 		ctx = ffi.cast('pulpo_tcp_context_t *', given_ctx)
 	else

@@ -78,9 +78,9 @@ function _M.maxconn(set_to)
 	(from http://docs.codehaus.org/display/JETTY/HighLoadServers)
 ]]
 	if ffi.os == "Linux" then
-	os.execute(('sudo /sbin/sysctl -w net.core.somaxconn=%d'):format(set_to))
+	os.execute(('sudo /sbin/sysctl -w net.core.somaxconn=%d 2>/dev/null'):format(set_to))
 	elseif ffi.os == "OSX" then
-	os.execute(('sudo sysctl -w kern.ipc.somaxconn=%d'):format(set_to))
+	os.execute(('sudo sysctl -w kern.ipc.somaxconn=%d 2>/dev/null'):format(set_to))
 	end
 	return set_to
 end
@@ -190,6 +190,9 @@ end
 function _M.msec_walltime()
 	local s,us = _M.clock_pair()
 	return math.ceil(tonumber((s * 1000) + (us / 1000)))
+end
+function _M.sec2walltime(sec)
+	return math.ceil(sec * 1000)
 end
 local fmt_buf = {}
 local fmt_buf_index = 0
