@@ -105,6 +105,9 @@ function _M.trace(co)
 end	
 function _M.resume(co, ...)
 	if not co then
+		-- eg) this has caused by emitted tentacle 'cancels' another tentacle which will be emitted by same event.
+		-- in that case, waitq length is shorter by 1, so after emiited tentacle's execution returns by yield or finish, 
+		-- waitq index becomes invalid.
 		logger.report('invalid coroutine:', debug.traceback())
 		return
 	end

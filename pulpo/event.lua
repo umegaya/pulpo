@@ -40,10 +40,17 @@ local readlist, writelist = {}, {}
 
 local ev_index = {}
 local ev_mt = { __index = ev_index }
-function ev_index.emit(t, typ, ...)
-	for i=#t.waitq,1,-1 do
-		tentacle.resume(t.waitq[i], typ, t, ...)
+
+local function iterate_waitq(wq, t, ev, ...)
+	local i = #wq
+	while i > 0 do
+		tentacle.resume(wq[i], t, ev, ...)
+		i=math.min(i-1, #wq) -- cancel or re-emit may decrease queue
 	end
+end
+
+function ev_index.emit(t, typ, ...)
+	iterate_waitq(t.waitq, typ, t, ...)
 end
 function ev_index.destroy(t, reason)
 	t:emit('destroy', t, reason)
@@ -96,24 +103,21 @@ function _M.destroy(emitter, reason)
 end
 
 function _M.emit_destroy(emitter, ev, reason)
-	for i=#ev.waitq,1,-1 do
-		-- waitq cleared inside resumed functions
-		tentacle.resume(ev.waitq[i], 'destroy', emitter, reason)
-	end
+	iterate_waitq(ev.waitq, 'destroy', emitter, reason)
 end	
 
 function _M.emit(emitter, type, ...)
 	local id = emitter:__emid()
 	local ev = eventlist[id][type] -- assert(eventlist[id][type], "event not created "..type)
-	for i=#ev.waitq,1,-1 do
-		tentacle.resume(ev.waitq[i], type, ev, ...)
-	end
+	iterate_waitq(ev.waitq, 'destroy', type, ev, ...)
 end
 
 local function unregister_thread(ev, co)
 	for i=1,#ev.waitq do
 		if ev.waitq[i] == co then
-			-- logger.report('remove coro from event', i, co)
+			if ev.waitq == dump_waitq then
+				logger.error('remove coro from event', i, co, tentacle.running())
+			end
 			table.remove(ev.waitq, i)
 			break
 		end
@@ -310,9 +314,7 @@ end
 function _M.emit_read(io)
 	-- print('emit_read', io:fd())
 	local ev = _M.ev_read(io)
-	for i=#ev.waitq,1,-1 do
-		tentacle.resume(ev.waitq[i], 'read', ev)
-	end
+	iterate_waitq(ev.waitq, 'read', ev)
 end
 
 function _M.add_write_to(io)
@@ -359,9 +361,7 @@ end
 function _M.emit_write(io)
 	-- print('emit_write:', io:fd())
 	local ev = _M.ev_write(io)
-	for i=#ev.waitq,1,-1 do
-		tentacle.resume(ev.waitq[i], 'write', ev)
-	end
+	iterate_waitq(ev.waitq, 'write', ev)
 end
 
 function _M.add_io_events(io)
